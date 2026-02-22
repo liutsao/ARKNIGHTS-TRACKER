@@ -4,18 +4,18 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>明日方舟抽卡紀錄統計器</title>
-    <!-- 引入 React, Babel (解析 JSX) 與 Tailwind CSS -->
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- 引入 Lucide 圖標 -->
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
-        body { background-color: #09090b; }
+        body { background-color: #09090b; color: #f4f4f5; font-family: sans-serif; }
         .custom-scrollbar::-webkit-scrollbar { width: 4px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #27272a; border-radius: 10px; }
+        .fade-in { animation: fadeIn 0.5s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
     </style>
 </head>
 <body>
@@ -24,17 +24,17 @@
     <script type="text/babel">
         const { useState, useEffect, useMemo, useRef } = React;
 
-        // --- 配置區 ---
-        const APP_TITLE = "明日方舟抽卡紀錄統計器"; 
-        const PRIMARY_COLOR = "cyan-400"; // 您可以在這裡修改顏色代碼
+        // --- 自定義配置 ---
+        const APP_TITLE = "明日方舟抽卡數據分析"; 
+        const THEME_COLOR = "cyan-400"; // 可自行修改顏色
         
         const MODEL_NAME = "gemini-2.5-flash-preview-09-2025";
         const STORAGE_KEY = "ark_tracker_data_v1";
         const CONFIG_KEY = "ark_tracker_config";
 
         const App = () => {
-            const [records, setRecords] = useState([]);
-            const [puSettings, setPuSettings] = useState({});
+            const [records, setRecords] = useState([]); // 原始抽卡資料
+            const [puSettings, setPuSettings] = useState({}); // PU設定
             const [userApiKey, setUserApiKey] = useState("");
             const [isProcessing, setIsProcessing] = useState(false);
             const [statusMessage, setStatusMessage] = useState("");
@@ -43,6 +43,7 @@
             const fileInputRef = useRef(null);
             const importInputRef = useRef(null);
 
+            // 初始化與儲存
             useEffect(() => {
                 const savedData = localStorage.getItem(STORAGE_KEY);
                 const savedConfig = localStorage.getItem(CONFIG_KEY);
@@ -55,13 +56,13 @@
                     const { apiKey } = JSON.parse(savedConfig);
                     setUserApiKey(apiKey || "");
                 }
-                lucide.createIcons();
+                setTimeout(() => lucide.createIcons(), 100);
             }, []);
 
             useEffect(() => {
                 localStorage.setItem(STORAGE_KEY, JSON.stringify({ savedRecords: records, savedPuSettings: puSettings }));
                 lucide.createIcons();
-            }, [records, puSettings, showSettings]);
+            }, [records, puSettings, showSettings, isProcessing]);
 
             const saveApiKey = (key) => {
                 setUserApiKey(key);
@@ -69,35 +70,12 @@
                 setShowSettings(false);
             };
 
-            const exportData = () => {
-                const dataStr = JSON.stringify({ records, puSettings }, null, 2);
-                const blob = new Blob([dataStr], { type: 'application/json' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `ark_data.json`;
-                a.click();
-            };
-
-            const importData = (e) => {
-                const file = e.target.files[0];
-                if (!file) return;
-                const reader = new FileReader();
-                reader.onload = (event) => {
-                    try {
-                        const json = JSON.parse(event.target.result);
-                        if (json.records) setRecords(json.records);
-                        if (json.puSettings) setPuSettings(json.puSettings);
-                        alert("導入成功");
-                    } catch (err) { alert("無效檔案"); }
-                };
-                reader.readAsText(file);
-            };
-
+            // 圖像文字辨識 (OCR)
             const processImages = async (imageFiles) => {
                 if (!userApiKey) { setShowSettings(true); return; }
                 setIsProcessing(true);
-                setStatusMessage("正在分析截圖...");
+                setStatusMessage("正在利用 AI 辨識截圖...");
+                
                 const newRecords = [];
                 for (const file of imageFiles) {
                     try {
@@ -113,7 +91,7 @@
                             body: JSON.stringify({
                                 contents: [{
                                     parts: [
-                                        { text: "請辨識《明日方舟》抽卡紀錄截圖，輸出JSON陣列：[{pool, name, star, time(yyyy-mm-dd hh:mm:ss)}]" },
+                                        { text: "請辨識《明日方舟》抽卡紀錄截圖，輸出為 JSON 陣列。每一項包含：pool(卡池名稱), name(幹員名稱), star(星級數字，例如 6★ 寫 6), time(獲得時間 yyyy-mm-dd hh:mm:ss)。僅輸出純 JSON 陣列，不包含 Markdown 標籤。" },
                                         { inlineData: { mimeType: "image/png", data: base64 } }
                                     ]
                                 }]
@@ -123,19 +101,27 @@
                         const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "[]";
                         const json = JSON.parse(text.replace(/```json|```/g, ""));
                         newRecords.push(...json);
-                    } catch (err) { console.error(err); setStatusMessage("辨識出錯"); }
+                    } catch (err) {
+                        console.error(err);
+                        setStatusMessage("辨識失敗，請檢查 API Key 或網路狀況");
+                    }
                 }
+
                 setRecords(prev => {
                     const combined = [...prev, ...newRecords];
                     const unique = combined.reduce((acc, curr) => {
                         if (!acc.find(x => x.time === curr.time && x.name === curr.name)) acc.push(curr);
                         return acc;
                     }, []);
+                    // 確保時間排序（重要：影響抽數計算）
                     return unique.sort((a, b) => new Date(a.time) - new Date(b.time));
                 });
                 setIsProcessing(false);
             };
 
+            // --- 核心統計邏輯 ---
+            
+            // 按卡池分組
             const poolGroups = useMemo(() => {
                 const groups = {};
                 records.forEach(r => {
@@ -146,101 +132,230 @@
                 return Object.values(groups);
             }, [records]);
 
-            const stats = useMemo(() => {
-                let totalPulls = 0, puCount = 0, sixStars = 0, offBanner = 0;
-                poolGroups.forEach(g => {
-                    const target = puSettings[g.name];
-                    g.items.forEach((item, idx) => {
+            // 計算全局統計
+            const globalStats = useMemo(() => {
+                let totalPullsToPU = 0;
+                let puCount = 0;
+                let totalSixStars = 0;
+                let offBannerSixStars = 0;
+
+                poolGroups.forEach(group => {
+                    const target = puSettings[group.name];
+                    let currentPoolPulls = 0;
+                    
+                    group.items.forEach(item => {
+                        currentPoolPulls++;
                         if (item.star === 6) {
-                            sixStars++;
+                            totalSixStars++;
                             if (target && item.name.includes(target)) {
-                                totalPulls += (idx + 1);
+                                totalPullsToPU += currentPoolPulls;
                                 puCount++;
-                            } else if (target) offBanner++;
+                            } else if (target) {
+                                offBannerSixStars++;
+                            }
                         }
                     });
                 });
+
                 return {
-                    avg: puCount > 0 ? (totalPulls / puCount).toFixed(1) : "-",
-                    rate: sixStars > 0 ? ((offBanner / sixStars) * 100).toFixed(1) : "0"
+                    avgPulls: puCount > 0 ? (totalPullsToPU / puCount).toFixed(1) : "-",
+                    offRate: totalSixStars > 0 ? ((offBannerSixStars / totalSixStars) * 100).toFixed(1) : "0"
                 };
             }, [poolGroups, puSettings]);
 
+            // 數據導出導入
+            const exportData = () => {
+                const data = JSON.stringify({ records, puSettings });
+                const blob = new Blob([data], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `ark_backup_${new Date().toISOString().slice(0,10)}.json`;
+                a.click();
+            };
+
+            const handleImport = (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (ev) => {
+                    try {
+                        const json = JSON.parse(ev.target.result);
+                        setRecords(json.records || []);
+                        setPuSettings(json.puSettings || {});
+                        alert("導入成功");
+                    } catch (e) { alert("無效的檔案格式"); }
+                };
+                reader.readAsText(file);
+            };
+
             return (
-                <div className="min-h-screen text-zinc-100 font-sans p-4">
-                    <div className="max-w-4xl mx-auto">
-                        <header className="flex justify-between items-center mb-8">
-                            <h1 className="text-xl font-bold flex items-center gap-2">
-                                <i data-lucide="bar-chart-3" className={`text-${PRIMARY_COLOR}`}></i> {APP_TITLE}
-                            </h1>
-                            <button onClick={() => setShowSettings(true)} className="p-2 hover:bg-zinc-800 rounded-full">
-                                <i data-lucide="settings" className={!userApiKey ? "text-red-500 animate-pulse" : "text-zinc-400"}></i>
-                            </button>
-                        </header>
-
-                        <div className="grid grid-cols-2 gap-4 mb-8">
-                            <div className="bg-zinc-900 p-6 rounded-2xl border border-zinc-800">
-                                <p className="text-zinc-500 text-xs uppercase font-bold mb-1">平均出貨抽數</p>
-                                <p className={`text-3xl font-black text-${PRIMARY_COLOR}`}>{stats.avg} <span className="text-sm font-normal text-zinc-600">抽</span></p>
-                            </div>
-                            <div className="bg-zinc-900 p-6 rounded-2xl border border-zinc-800">
-                                <p className="text-zinc-500 text-xs uppercase font-bold mb-1">六星歪率</p>
-                                <p className="text-3xl font-black text-red-500">{stats.rate}%</p>
-                            </div>
+                <div className="min-h-screen p-4 sm:p-8 max-w-5xl mx-auto">
+                    {/* Header */}
+                    <header className="flex justify-between items-center mb-8">
+                        <div className="flex items-center gap-3">
+                            <i data-lucide="bar-chart-3" className={`text-${THEME_COLOR} w-8 h-8`}></i>
+                            <h1 className="text-2xl font-black tracking-tight uppercase italic">{APP_TITLE}</h1>
                         </div>
+                        <button onClick={() => setShowSettings(true)} className="p-2 hover:bg-zinc-800 rounded-full transition-colors">
+                            <i data-lucide="settings" className={!userApiKey ? "text-red-500 animate-pulse" : "text-zinc-500"}></i>
+                        </button>
+                    </header>
 
-                        <div 
-                            className="border-2 border-dashed border-zinc-800 rounded-3xl p-10 text-center mb-8 cursor-pointer hover:bg-zinc-900/50"
-                            onClick={() => !isProcessing && fileInputRef.current?.click()}
-                        >
-                            <input type="file" multiple hidden ref={fileInputRef} accept="image/*" onChange={(e) => processImages(Array.from(e.target.files))} />
-                            {isProcessing ? <i data-lucide="loader-2" className={`animate-spin mx-auto text-${PRIMARY_COLOR} mb-2`}></i> : <i data-lucide="upload" className="mx-auto text-zinc-600 mb-2"></i>}
-                            <p className="font-bold">{isProcessing ? statusMessage : "點擊上傳截圖"}</p>
+                    {/* Global Stats Dashboard */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-10">
+                        <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-3xl shadow-xl">
+                            <p className="text-zinc-500 text-xs font-bold uppercase tracking-widest mb-2">平均獲得 PU 六星抽數</p>
+                            <p className={`text-4xl font-black text-${THEME_COLOR}`}>{globalStats.avgPulls} <span className="text-base font-normal text-zinc-600">抽</span></p>
                         </div>
-
-                        <div className="space-y-4">
-                            {poolGroups.map(group => (
-                                <div key={group.name} className="bg-zinc-900 rounded-2xl border border-zinc-800 overflow-hidden">
-                                    <div className="p-4 border-b border-zinc-800 flex justify-between items-center bg-zinc-800/30">
-                                        <span className="font-bold text-sm">{group.name} ({group.total} 抽)</span>
-                                        <input 
-                                            placeholder="設定 PU 角色"
-                                            className="bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-1 text-xs w-32 outline-none"
-                                            value={puSettings[group.name] || ""}
-                                            onChange={(e) => setPuSettings({...puSettings, [group.name]: e.target.value})}
-                                        />
-                                    </div>
-                                    <div className="p-4 text-xs text-zinc-400 space-y-2">
-                                        {group.items.filter(x => x.star === 6).map((x, i) => (
-                                            <div key={i} className={x.name.includes(puSettings[group.name]) ? `text-${PRIMARY_COLOR} font-bold` : "text-red-400"}>
-                                                • {x.name} <span className="opacity-40 ml-2">({x.time})</span>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-
-                        <div className="mt-8 flex justify-center gap-6 text-[10px] text-zinc-600 font-bold uppercase">
-                            <button onClick={exportData} className="flex items-center gap-1 hover:text-zinc-300"><i data-lucide="download" size="14"></i> 導出</button>
-                            <button onClick={() => importInputRef.current.click()} className="flex items-center gap-1 hover:text-zinc-300"><i data-lucide="upload-cloud" size="14"></i> 導入</button>
-                            <input type="file" hidden ref={importInputRef} onChange={importData} />
+                        <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-3xl shadow-xl">
+                            <p className="text-zinc-500 text-xs font-bold uppercase tracking-widest mb-2">歪到非 PU 六星機率</p>
+                            <p className="text-4xl font-black text-red-500">{globalStats.offRate}<span className="text-xl">%</span></p>
                         </div>
                     </div>
 
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                        {/* Control Panel */}
+                        <div className="lg:col-span-1 space-y-6">
+                            <div 
+                                onClick={() => !isProcessing && fileInputRef.current?.click()}
+                                className={`border-2 border-dashed rounded-3xl p-10 text-center cursor-pointer transition-all ${isProcessing ? 'border-' + THEME_COLOR + ' bg-' + THEME_COLOR + '/5' : 'border-zinc-800 hover:border-zinc-700 bg-zinc-900/50'}`}
+                            >
+                                <input type="file" multiple hidden ref={fileInputRef} accept="image/*" onChange={(e) => processImages(Array.from(e.target.files))} />
+                                {isProcessing ? (
+                                    <div className="animate-spin mb-4 inline-block"><i data-lucide="loader-2" className={`text-${THEME_COLOR}`}></i></div>
+                                ) : (
+                                    <i data-lucide="upload" className="mx-auto text-zinc-600 mb-4 w-10 h-10"></i>
+                                )}
+                                <p className="font-bold text-sm">{isProcessing ? statusMessage : "上傳抽卡紀錄截圖"}</p>
+                                <p className="text-zinc-600 text-[10px] mt-2 italic">系統將自動識別重複資料</p>
+                            </div>
+
+                            <div className="flex justify-between gap-4">
+                                <button onClick={exportData} className="flex-1 py-3 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-2xl text-xs font-bold flex items-center justify-center gap-2">
+                                    <i data-lucide="download" className="w-4 h-4"></i> 導出數據
+                                </button>
+                                <button onClick={() => importInputRef.current.click()} className="flex-1 py-3 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-2xl text-xs font-bold flex items-center justify-center gap-2">
+                                    <i data-lucide="upload-cloud" className="w-4 h-4"></i> 導入備份
+                                </button>
+                                <input type="file" hidden ref={importInputRef} onChange={handleImport} />
+                            </div>
+                        </div>
+
+                        {/* List Area */}
+                        <div className="lg:col-span-2 space-y-6">
+                            {poolGroups.length === 0 && !isProcessing && (
+                                <div className="text-center py-20 text-zinc-700">
+                                    <i data-lucide="file-question" className="mx-auto mb-4 opacity-20 w-16 h-16"></i>
+                                    <p>尚未載入任何抽卡數據</p>
+                                </div>
+                            )}
+
+                            {poolGroups.slice().reverse().map(group => (
+                                <div key={group.name} className="bg-zinc-900 border border-zinc-800 rounded-3xl overflow-hidden shadow-lg fade-in">
+                                    <div className="p-5 border-b border-zinc-800 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-zinc-800/20">
+                                        <div className="flex items-center gap-3">
+                                            <div className={`w-10 h-10 bg-${THEME_COLOR}/10 border border-${THEME_COLOR}/20 rounded-xl flex items-center justify-center text-${THEME_COLOR} font-black`}>
+                                                {group.total}
+                                            </div>
+                                            <div>
+                                                <h3 className="font-bold text-zinc-100">{group.name}</h3>
+                                                <p className="text-[10px] text-zinc-500 uppercase tracking-tighter">總計 {group.total} 抽</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center bg-black/40 p-1 rounded-xl border border-zinc-800 w-full sm:w-auto">
+                                            <i data-lucide="target" className="text-zinc-600 mx-2 w-4 h-4"></i>
+                                            <input 
+                                                placeholder="設定 PU 六星角色"
+                                                className="bg-transparent text-xs py-2 px-1 focus:outline-none w-full sm:w-40"
+                                                value={puSettings[group.name] || ""}
+                                                onChange={(e) => setPuSettings({...puSettings, [group.name]: e.target.value})}
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="p-5">
+                                        {/* 出貨路徑分析 */}
+                                        {puSettings[group.name] && (
+                                            <div className="mb-6">
+                                                <p className="text-[10px] text-zinc-600 font-black uppercase mb-3 tracking-widest">出貨路徑詳情</p>
+                                                <div className="flex flex-wrap gap-2">
+                                                    {(() => {
+                                                        let pullCount = 0;
+                                                        const sixStarElements = [];
+                                                        group.items.forEach((item, idx) => {
+                                                            pullCount++;
+                                                            if (item.star === 6) {
+                                                                const isPU = item.name.includes(puSettings[group.name]);
+                                                                sixStarElements.push(
+                                                                    <div key={idx} className={`px-3 py-2 rounded-xl text-xs font-bold border flex items-center gap-2 ${isPU ? 'bg-' + THEME_COLOR + ' text-black border-white/20' : 'bg-zinc-800 text-red-400 border-zinc-700'}`}>
+                                                                        <span>{item.name}</span>
+                                                                        <span className="opacity-50 text-[10px]">第 {pullCount} 抽</span>
+                                                                        {isPU && <i data-lucide="check-circle-2" className="w-3 h-3"></i>}
+                                                                    </div>
+                                                                );
+                                                            }
+                                                        });
+                                                        return sixStarElements.length > 0 ? sixStarElements : <span className="text-zinc-700 text-xs italic">尚未在記錄中發現六星</span>;
+                                                    })()}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* 幹員列表 */}
+                                        <div className="space-y-1 max-h-60 overflow-y-auto pr-2 custom-scrollbar">
+                                            {group.items.slice().reverse().map((item, idx) => (
+                                                <div key={idx} className="flex items-center justify-between py-2 border-b border-zinc-800/50 text-[13px] hover:bg-white/[0.02] px-2 rounded-lg transition-colors">
+                                                    <div className="flex items-center gap-4">
+                                                        <span className="text-zinc-700 font-mono w-6 text-right text-[10px]">{group.total - idx}</span>
+                                                        <span className={`font-medium ${item.star === 6 ? 'text-' + THEME_COLOR + ' font-bold' : item.star === 5 ? 'text-purple-400' : 'text-zinc-400'}`}>
+                                                            {item.name}
+                                                            {item.star === 6 && " ★★★★★★"}
+                                                        </span>
+                                                    </div>
+                                                    <span className="text-zinc-700 text-[10px] font-mono">{item.time.split(' ')[0]}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+
+                            {records.length > 0 && (
+                                <button 
+                                    onClick={() => { if(confirm("確定要刪除所有本地數據嗎？")) setRecords([]); }}
+                                    className="w-full py-6 text-zinc-700 hover:text-red-900 transition-colors text-xs font-bold flex items-center justify-center gap-2"
+                                >
+                                    <i data-lucide="trash-2" className="w-4 h-4"></i> 清空所有快取
+                                </button>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* API Settings Modal */}
                     {showSettings && (
-                        <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50">
-                            <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 w-full max-w-sm">
-                                <h2 className="font-bold flex items-center gap-2 mb-4 text-zinc-100">API Key 設定</h2>
+                        <div className="fixed inset-0 bg-black/90 flex items-center justify-center p-4 z-50">
+                            <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-8 w-full max-w-sm shadow-2xl">
+                                <h2 className="text-xl font-bold mb-4 flex items-center gap-2 italic uppercase">
+                                    <i data-lucide="key" className={`text-${THEME_COLOR}`}></i> API Configuration
+                                </h2>
+                                <p className="text-xs text-zinc-500 mb-6 leading-relaxed">
+                                    請輸入 Google Gemini API Key。為了隱私，此金鑰僅儲存在您的手機瀏覽器中，不會上傳到任何伺服器。
+                                </p>
                                 <input 
                                     type="password"
-                                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-sm mb-4 outline-none text-white"
-                                    placeholder="貼上 Gemini API Key"
+                                    className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl px-5 py-4 text-sm mb-6 focus:border-zinc-500 outline-none transition-all"
+                                    placeholder="Paste API Key Here"
                                     value={userApiKey}
                                     onChange={(e) => setUserApiKey(e.target.value)}
                                 />
-                                <button onClick={() => saveApiKey(userApiKey)} className={`w-full bg-${PRIMARY_COLOR} text-black font-bold py-3 rounded-xl`}>儲存</button>
-                                <button onClick={() => setShowSettings(false)} className="w-full text-zinc-500 text-xs mt-4">關閉</button>
+                                <button 
+                                    onClick={() => saveApiKey(userApiKey)} 
+                                    className={`w-full bg-${THEME_COLOR} text-black font-black py-4 rounded-2xl hover:brightness-110 transition-all uppercase tracking-widest`}
+                                >
+                                    Save and Continue
+                                </button>
+                                <button onClick={() => setShowSettings(false)} className="w-full text-zinc-600 text-xs mt-6 font-bold hover:text-zinc-400 transition-colors">Dismiss</button>
                             </div>
                         </div>
                     )}
