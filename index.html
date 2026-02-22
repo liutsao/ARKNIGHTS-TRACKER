@@ -3,398 +3,443 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PRTS - 明日方舟抽卡分析終端</title>
-    
-    <!-- 核心依賴：確保 Babel 在最前面載入 -->
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <title>PRTS | 抽卡數據分析終端</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Noto+Sans+TC:wght@300;500;700&display=swap" rel="stylesheet">
-    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         :root {
+            --ak-bg: #121212;
+            --ak-cyan: #00f0ff;
             --ak-yellow: #ffcf00;
-            --ak-orange: #ff7b00;
-            --ak-bg: #0a0a0a;
+            --ak-red: #ff4d4d;
+            --ak-text: #e0e0e0;
+            --ak-grid: rgba(0, 240, 255, 0.05);
         }
+
         body {
-            font-family: 'Noto Sans TC', sans-serif;
             background-color: var(--ak-bg);
-            color: #d1d1d1;
-            margin: 0;
+            background-image: 
+                linear-gradient(var(--ak-grid) 1px, transparent 1px),
+                linear-gradient(90deg, var(--ak-grid) 1px, transparent 1px);
+            background-size: 30px 30px;
+            color: var(--ak-text);
+            font-family: 'Noto Sans TC', sans-serif;
+            min-height: 100vh;
             overflow-x: hidden;
         }
-        .mono { font-family: 'JetBrains Mono', monospace; }
-        
-        /* 背景裝飾 */
-        .bg-grid {
-            background-image: radial-gradient(rgba(255,255,255,0.05) 1px, transparent 0);
-            background-size: 30px 30px;
-            position: fixed;
-            inset: 0;
-            z-index: -1;
-        }
 
-        .glass-card {
-            background: rgba(20, 20, 20, 0.7);
-            backdrop-filter: blur(12px);
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            box-shadow: 0 8px 32px rgba(0,0,0,0.5);
-        }
-
-        .status-bar {
-            background: linear-gradient(90deg, var(--ak-yellow), var(--ak-orange));
-            height: 2px;
-            width: 100%;
-        }
-
-        /* 明日方舟風格按鈕 */
+        /* 明日方舟風格斜切按鈕 */
         .ak-btn {
             position: relative;
+            background: #2b2b2b;
+            color: #fff;
+            padding: 8px 20px;
             clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
             transition: all 0.2s;
-        }
-        .ak-btn:active { transform: scale(0.95); }
-
-        /* 六星閃爍動畫 */
-        @keyframes shine {
-            0% { text-shadow: 0 0 5px var(--ak-orange); }
-            50% { text-shadow: 0 0 20px var(--ak-orange), 0 0 30px var(--ak-yellow); }
-            100% { text-shadow: 0 0 5px var(--ak-orange); }
-        }
-        .six-star-active {
-            color: var(--ak-orange);
+            border: none;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
             font-weight: bold;
-            animation: shine 2s infinite;
+            letter-spacing: 1px;
         }
+
+        .ak-btn:hover {
+            background: var(--ak-cyan);
+            color: #000;
+        }
+
+        .ak-btn.primary {
+            background: var(--ak-cyan);
+            color: #000;
+        }
+
+        .ak-border-box {
+            border-left: 4px solid var(--ak-cyan);
+            background: rgba(40, 40, 40, 0.8);
+            backdrop-filter: blur(4px);
+        }
+
+        /* 呼吸燈效果 */
+        @keyframes breathing {
+            0%, 100% { box-shadow: 0 0 5px var(--ak-yellow); border-color: var(--ak-yellow); }
+            50% { box-shadow: 0 0 20px var(--ak-yellow); border-color: #fff; }
+        }
+
+        .pu-star-6 {
+            animation: breathing 2s infinite ease-in-out;
+            border: 2px solid var(--ak-yellow);
+            color: var(--ak-yellow) !important;
+            font-weight: 900;
+        }
+
+        .star-6 { color: var(--ak-yellow); }
+        .star-5 { color: #f9a8d4; } /* 接近遊戲內資深幹員顏色 */
+
+        .terminal-header {
+            border-bottom: 2px solid #333;
+            background: rgba(0,0,0,0.5);
+        }
+
+        input, select {
+            background: #1a1a1a;
+            border: 1px solid #444;
+            color: white;
+            padding: 4px 8px;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: var(--ak-cyan);
+        }
+
+        .modal-overlay {
+            background: rgba(0,0,0,0.85);
+            backdrop-filter: blur(5px);
+        }
+
+        /* 隱藏滾動條 */
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-thumb { background: var(--ak-cyan); }
     </style>
 </head>
-<body>
-    <div id="root">
-        <!-- 初始讀取畫面，防止白屏 -->
-        <div id="loader" style="height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center;">
-            <div style="width: 50px; height: 50px; border: 3px solid #333; border-top-color: #ffcf00; border-radius: 50%; animation: spin 1s linear infinite;"></div>
-            <p style="margin-top: 20px; color: #666; font-family: sans-serif; letter-spacing: 2px;">PRTS SYSTEM INITIALIZING...</p>
+<body class="p-4 md:p-8">
+
+    <!-- 頂部標題與 API 設定 -->
+    <header class="terminal-header mb-8 pb-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div>
+            <h1 class="text-3xl font-black italic tracking-tighter">PRTS <span class="text-sm not-italic font-normal opacity-50">LOGISTICS TERMINAL</span></h1>
+            <p class="text-xs text-cyan-400">STATUS: ONLINE | DATA ARCHIVE v2.5</p>
+        </div>
+        <div class="flex gap-2 flex-wrap">
+            <input type="password" id="apiKey" placeholder="輸入 Gemini API Key" class="text-sm w-48">
+            <button onclick="exportData()" class="ak-btn text-xs"><i class="fas fa-download"></i> 導出數據</button>
+            <label class="ak-btn text-xs cursor-pointer">
+                <i class="fas fa-upload"></i> 導入數據
+                <input type="file" id="importFile" class="hidden" onchange="importData(event)">
+            </label>
+        </div>
+    </header>
+
+    <!-- 全局統計區塊 -->
+    <section id="globalStats" class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+        <div class="ak-border-box p-4">
+            <h3 class="text-xs opacity-50 mb-1">平均出貨抽數 (PU 六星)</h3>
+            <div id="avgPuPulls" class="text-4xl font-bold text-cyan-400">--</div>
+        </div>
+        <div class="ak-border-box p-4 border-l-red-500">
+            <h3 class="text-xs opacity-50 mb-1">非預期六星機率 (歪率)</h3>
+            <div id="offBannerRate" class="text-4xl font-bold text-red-400">--%</div>
+        </div>
+    </section>
+
+    <!-- 操作區 -->
+    <section class="mb-10">
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="text-xl font-bold flex items-center gap-2">
+                <i class="fas fa-history text-cyan-400"></i> 紀錄辨識與上傳
+            </h2>
+        </div>
+        <div class="border-2 border-dashed border-gray-600 rounded-lg p-10 text-center hover:border-cyan-400 transition-colors">
+            <input type="file" id="imageUpload" multiple accept="image/*" class="hidden" onchange="handleUpload(event)">
+            <label for="imageUpload" class="cursor-pointer">
+                <i class="fas fa-cloud-upload-alt text-4xl mb-4 text-gray-500"></i>
+                <p>點擊或拖放數張抽卡截圖至此處</p>
+                <p class="text-xs opacity-40 mt-2">支援多選，AI 將自動辨識卡池與幹員</p>
+            </label>
+        </div>
+        <div id="processingStatus" class="mt-4 text-cyan-500 text-sm hidden">
+            <i class="fas fa-spinner fa-spin"></i> PRTS 正在解析圖像數據...
+        </div>
+    </section>
+
+    <!-- 卡池列表區 -->
+    <main id="poolContainer" class="space-y-8">
+        <!-- 卡池區塊範例 -->
+    </main>
+
+    <!-- 設定 PU 模組 -->
+    <div id="puModal" class="modal-overlay fixed inset-0 hidden z-50 flex items-center justify-center p-4">
+        <div class="bg-zinc-900 p-6 w-full max-w-md border border-cyan-800 shadow-2xl">
+            <h3 class="text-xl font-bold mb-4 text-cyan-400">設定卡池 PU 幹員</h3>
+            <p class="text-xs mb-4 opacity-70">請輸入該卡池主要針對的六星角色名稱，系統將據此計算出貨消耗。</p>
+            <input type="text" id="puInput" class="w-full mb-6 p-2 bg-black border border-gray-700" placeholder="例如: 瑪恩納">
+            <div class="flex justify-end gap-3">
+                <button onclick="closeModal()" class="text-sm opacity-50">取消</button>
+                <button onclick="savePU()" class="ak-btn primary">確定</button>
+            </div>
         </div>
     </div>
 
-    <style>@keyframes spin { to { transform: rotate(360deg); } }</style>
-
-    <script type="text/babel">
-        // 確保在 React 載入後隱藏 loader
-        document.getElementById('loader')?.remove();
-
-        const { useState, useEffect, useMemo } = React;
-
-        const App = () => {
-            const [apiKey, setApiKey] = useState(localStorage.getItem('ak_gemini_key') || '');
-            const [logs, setLogs] = useState([]);
-            const [poolSettings, setPoolSettings] = useState({});
-            const [loading, setLoading] = useState(false);
-            const [showApiModal, setShowApiModal] = useState(false);
-            const [editingPool, setEditingPool] = useState(null);
-
-            const appId = typeof __app_id !== 'undefined' ? __app_id : 'arknights-pity-tracker';
-
-            // 讀取本地數據
-            useEffect(() => {
-                try {
-                    const saved = localStorage.getItem(`${appId}_data`);
-                    if (saved) {
-                        const { logs: l, settings: s } = JSON.parse(saved);
-                        setLogs(l || []);
-                        setPoolSettings(s || {});
-                    }
-                } catch (e) { console.error("Data load error", e); }
-            }, []);
-
-            // 儲存本地數據
-            useEffect(() => {
-                localStorage.setItem(`${appId}_data`, JSON.stringify({ logs, settings: poolSettings }));
-            }, [logs, poolSettings]);
-
-            // Gemini API 調用 (具備 Exponential Backoff)
-            const callOCR = async (base64) => {
-                const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
-                const prompt = `你是一位 PRTS 解析專家。請從明日方舟歷史記錄截圖中提取 JSON。
-                格式：{"pulls": [{"pool": "池名", "operator": "名稱", "rarity": 6, "time": "2025-12-29 19:45:19"}]}
-                注意：
-                1. 橙色/黃色文字 = 6星。
-                2. 必須嚴格遵守 JSON 格式。`;
-
-                const payload = {
-                    contents: [{
-                        parts: [
-                            { text: "請解析圖中的抽卡資料。" },
-                            { inlineData: { mimeType: "image/jpeg", data: base64 } }
-                        ]
-                    }],
-                    systemInstruction: { parts: [{ text: prompt }] },
-                    generationConfig: { responseMimeType: "application/json" }
-                };
-
-                for (let i = 0; i < 5; i++) {
-                    try {
-                        const res = await fetch(url, { method: 'POST', body: JSON.stringify(payload) });
-                        if (!res.ok) throw new Error("API Error");
-                        const data = await res.json();
-                        return JSON.parse(data.candidates[0].content.parts[0].text);
-                    } catch (e) {
-                        if (i === 4) throw e;
-                        await new Promise(r => setTimeout(r, Math.pow(2, i) * 1000));
-                    }
-                }
-            };
-
-            const handleFileUpload = async (e) => {
-                if (!apiKey) {
-                    setShowApiModal(true);
-                    return;
-                }
-                const files = Array.from(e.target.files);
-                setLoading(true);
-
-                let newEntries = [...logs];
-
-                for (const file of files) {
-                    try {
-                        const base64 = await new Promise((resolve) => {
-                            const reader = new FileReader();
-                            reader.onload = () => resolve(reader.result.split(',')[1]);
-                            reader.readAsDataURL(file);
-                        });
-                        const result = await callOCR(base64);
-                        if (result.pulls) {
-                            result.pulls.forEach(p => {
-                                // 檢查重複
-                                if (!newEntries.some(e => e.time === p.time && e.operator === p.operator)) {
-                                    newEntries.push(p);
-                                }
-                            });
-                        }
-                    } catch (err) {
-                        console.error("OCR Failed", err);
-                    }
-                }
-
-                setLogs(newEntries.sort((a, b) => new Date(a.time) - new Date(b.time)));
-                setLoading(false);
-            };
-
-            // 數據分析
-            const stats = useMemo(() => {
-                const groups = {};
-                logs.forEach(l => {
-                    if (!groups[l.pool]) groups[l.pool] = [];
-                    groups[l.pool].push(l);
-                });
-
-                let totalPuPity = 0;
-                let puCount = 0;
-                let totalSix = 0;
-                let offSix = 0;
-
-                const processedPools = Object.keys(groups).map(name => {
-                    const poolLogs = groups[name];
-                    const pu = poolSettings[name]?.puChar;
-                    let pityCounter = 0;
-                    const sixPulls = [];
-
-                    poolLogs.forEach(log => {
-                        pityCounter++;
-                        if (log.rarity === 6) {
-                            totalSix++;
-                            const isPU = pu && log.operator.includes(pu);
-                            if (isPU) {
-                                totalPuPity += pityCounter;
-                                puCount++;
-                            } else {
-                                offSix++;
-                            }
-                            sixPulls.push({ ...log, pity: pityCounter, isPU });
-                            pityCounter = 0;
-                        }
-                    });
-
-                    return { name, total: poolLogs.length, sixPulls, pu };
-                });
-
-                return {
-                    pools: processedPools,
-                    avgPity: puCount ? (totalPuPity / puCount).toFixed(1) : "---",
-                    offRate: totalSix ? ((offSix / totalSix) * 100).toFixed(1) : "0"
-                };
-            }, [logs, poolSettings]);
-
-            const exportData = () => {
-                const blob = new Blob([JSON.stringify({ logs, poolSettings })], { type: 'application/json' });
-                const a = document.createElement('a');
-                a.href = URL.createObjectURL(blob);
-                a.download = `arknights_prts_backup.json`;
-                a.click();
-            };
-
-            return (
-                <div className="min-h-screen pb-20">
-                    <div className="bg-grid"></div>
-                    
-                    {/* Top Header */}
-                    <div className="border-b border-zinc-800 sticky top-0 z-40 bg-black/80 backdrop-blur-md">
-                        <div className="max-w-6xl mx-auto px-6 py-4 flex flex-wrap justify-between items-center gap-4">
-                            <div>
-                                <h1 className="text-2xl font-bold tracking-widest flex items-center gap-3">
-                                    <span className="bg-white text-black px-2 py-1 text-xs">PRTS</span>
-                                    明日方舟分析終端
-                                </h1>
-                            </div>
-                            <div className="flex gap-4">
-                                <button onClick={() => setShowApiModal(true)} className="text-xs border border-zinc-700 px-3 py-1 hover:bg-white hover:text-black transition">API CONFIG</button>
-                                <button onClick={exportData} className="text-xs border border-zinc-700 px-3 py-1 hover:bg-white hover:text-black transition">EXPORT DATA</button>
-                            </div>
-                        </div>
-                        <div className="status-bar"></div>
-                    </div>
-
-                    <main className="max-w-6xl mx-auto px-6 mt-10">
-                        {/* Global Stats Area */}
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
-                            <div className="glass-card p-6 rounded-sm border-l-4 border-yellow-500">
-                                <div className="text-[10px] text-zinc-500 mb-2 mono">AVG_PULLS_FOR_TARGET</div>
-                                <div className="text-4xl font-bold mono">{stats.avgPity} <span className="text-sm font-normal opacity-40">PULLS</span></div>
-                            </div>
-                            <div className="glass-card p-6 rounded-sm border-l-4 border-red-500">
-                                <div className="text-[10px] text-zinc-500 mb-2 mono">OFF_BANNER_RATE</div>
-                                <div className="text-4xl font-bold mono">{stats.offRate}%</div>
-                            </div>
-                            <div className="glass-card p-6 rounded-sm border-l-4 border-zinc-500">
-                                <div className="text-[10px] text-zinc-500 mb-2 mono">TOTAL_RECORDS</div>
-                                <div className="text-4xl font-bold mono">{logs.length} <span className="text-sm font-normal opacity-40">ITEMS</span></div>
-                            </div>
-                        </div>
-
-                        {/* Upload Zone */}
-                        <div className="mb-16">
-                            <label className={`block border-2 border-dashed rounded-lg p-12 text-center transition-all cursor-pointer ${loading ? 'border-yellow-500 bg-yellow-500/5 cursor-wait' : 'border-zinc-800 hover:border-zinc-600'}`}>
-                                <input type="file" multiple className="hidden" onChange={handleFileUpload} disabled={loading} accept="image/*" />
-                                {loading ? (
-                                    <div className="mono text-yellow-500 animate-pulse">PRTS DATA ANALYZING...</div>
-                                ) : (
-                                    <div>
-                                        <p className="text-lg font-medium mb-2 uppercase tracking-widest text-zinc-300">上傳歷史記錄截圖</p>
-                                        <p className="text-xs text-zinc-500 mono">SUPPORT: MULTI-IMAGE / AUTO-DEDUPLICATION</p>
-                                    </div>
-                                )}
-                            </label>
-                        </div>
-
-                        {/* Pools Section */}
-                        <div className="grid grid-cols-1 gap-8">
-                            {stats.pools.slice().reverse().map(pool => (
-                                <div key={pool.name} className="glass-card rounded-sm overflow-hidden border-t border-zinc-700/50">
-                                    <div className="bg-zinc-900/50 p-4 flex justify-between items-center border-b border-zinc-800">
-                                        <div className="cursor-pointer" onClick={() => setEditingPool(pool.name)}>
-                                            <h2 className="text-lg font-bold flex items-center gap-2">
-                                                {pool.name}
-                                                <span className="text-[10px] bg-zinc-800 text-zinc-400 px-2 py-0.5 rounded uppercase">Total: {pool.total}</span>
-                                            </h2>
-                                            <p className="text-[10px] text-zinc-500 mt-1 uppercase mono">Target: {pool.pu || "Not Set (Click to Edit)"}</p>
-                                        </div>
-                                    </div>
-                                    
-                                    <div className="p-0">
-                                        <table className="w-full text-left text-sm">
-                                            <thead className="bg-black/40 text-[10px] text-zinc-600 mono uppercase border-b border-zinc-800">
-                                                <tr>
-                                                    <th className="px-6 py-3 font-medium">Operator Name</th>
-                                                    <th className="px-6 py-3 font-medium text-right">Pity Cost</th>
-                                                    <th className="px-6 py-3 font-medium text-right">Acquisition Date</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody className="divide-y divide-zinc-800/50">
-                                                {pool.sixPulls.map((p, idx) => (
-                                                    <tr key={idx} className="hover:bg-white/5 transition-colors">
-                                                        <td className="px-6 py-4">
-                                                            <div className="flex items-center gap-2">
-                                                                <span className={p.isPU ? 'six-star-active' : 'text-zinc-400'}>{p.operator}</span>
-                                                                {p.isPU && <span className="text-[8px] bg-orange-500/20 text-orange-500 px-1 rounded">TARGET</span>}
-                                                            </div>
-                                                        </td>
-                                                        <td className={`px-6 py-4 text-right mono font-bold ${p.pity > 50 ? 'text-red-500' : 'text-green-500'}`}>
-                                                            {p.pity}
-                                                        </td>
-                                                        <td className="px-6 py-4 text-right text-xs text-zinc-600 mono">
-                                                            {p.time}
-                                                        </td>
-                                                    </tr>
-                                                ))}
-                                                {pool.sixPulls.length === 0 && (
-                                                    <tr>
-                                                        <td colSpan="3" className="px-6 py-10 text-center text-zinc-700 mono text-xs">NO 6-STAR RECORDS FOUND IN THIS POOL.</td>
-                                                    </tr>
-                                                )}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </main>
-
-                    {/* Modals */}
-                    {showApiModal && (
-                        <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/90">
-                            <div className="glass-card w-full max-w-md p-8 rounded-sm">
-                                <h3 className="text-xl font-bold mb-4 uppercase tracking-tighter">PRTS API Config</h3>
-                                <p className="text-xs text-zinc-500 mb-6 leading-relaxed">請輸入 Gemini API Key 以啟用 AI 文字辨識。密鑰僅存儲於本地緩存。</p>
-                                <input 
-                                    type="password" 
-                                    className="w-full bg-zinc-900 border border-zinc-800 p-4 rounded-sm text-sm focus:border-yellow-500 outline-none mono mb-6"
-                                    value={apiKey}
-                                    onChange={(e) => {
-                                        setApiKey(e.target.value);
-                                        localStorage.setItem('ak_gemini_key', e.target.value);
-                                    }}
-                                    placeholder="Enter your API Key here..."
-                                />
-                                <button onClick={() => setShowApiModal(false)} className="w-full py-4 bg-yellow-500 text-black font-bold ak-btn text-sm uppercase">Confirm System Sync</button>
-                            </div>
-                        </div>
-                    )}
-
-                    {editingPool && (
-                        <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/90">
-                            <div className="glass-card w-full max-w-md p-8 rounded-sm">
-                                <h3 className="text-xl font-bold mb-1 uppercase">Set PU Target</h3>
-                                <p className="text-[10px] text-zinc-500 mb-6 mono">POOL: {editingPool}</p>
-                                <input 
-                                    type="text" 
-                                    className="w-full bg-zinc-900 border border-zinc-800 p-4 rounded-sm text-sm focus:border-yellow-500 outline-none mb-6"
-                                    value={poolSettings[editingPool]?.puChar || ''}
-                                    onChange={(e) => setPoolSettings({
-                                        ...poolSettings,
-                                        [editingPool]: { ...poolSettings[editingPool], puChar: e.target.value }
-                                    })}
-                                    placeholder="輸入角色全名 (例: 維什戴爾)"
-                                />
-                                <div className="flex gap-4">
-                                    <button onClick={() => {
-                                        const newLogs = logs.filter(l => l.pool !== editingPool);
-                                        setLogs(newLogs);
-                                        setEditingPool(null);
-                                    }} className="flex-1 py-4 text-xs text-red-500 border border-red-500/20 hover:bg-red-500/10 transition">DELETE POOL</button>
-                                    <button onClick={() => setEditingPool(null)} className="flex-1 py-4 bg-white text-black font-bold ak-btn text-sm uppercase">Update</button>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-                </div>
-            );
+    <script>
+        let db = {
+            pools: {}, // poolName: { puName: string, records: [{name, star, time}] }
         };
 
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<App />);
+        const API_KEY_STORE = 'ak_tracker_api_key';
+        const DB_STORE = 'ak_tracker_db';
+
+        // 初始化
+        window.onload = () => {
+            const savedKey = localStorage.getItem(API_KEY_STORE);
+            if (savedKey) document.getElementById('apiKey').value = savedKey;
+
+            const savedDb = localStorage.getItem(DB_STORE);
+            if (savedDb) {
+                db = JSON.parse(savedDb);
+                renderAll();
+            }
+        };
+
+        // --- 核心邏輯 ---
+
+        async function handleUpload(event) {
+            const files = Array.from(event.target.files);
+            const apiKey = document.getElementById('apiKey').value;
+            
+            if (!apiKey) {
+                alert("請先輸入 Gemini API Key 才能進行辨識");
+                return;
+            }
+            localStorage.setItem(API_KEY_STORE, apiKey);
+
+            document.getElementById('processingStatus').classList.remove('hidden');
+
+            for (const file of files) {
+                try {
+                    const base64 = await fileToBase64(file);
+                    const result = await recognizeImage(base64, apiKey);
+                    processResult(result);
+                } catch (e) {
+                    console.error("辨識失敗", e);
+                }
+            }
+
+            document.getElementById('processingStatus').classList.add('hidden');
+            saveAndRender();
+        }
+
+        async function recognizeImage(base64Data, apiKey) {
+            const prompt = `
+                你是一位明日方舟資料錄入員。請辨識這張抽卡紀錄截圖。
+                輸出格式必須是純 JSON，包含以下欄位：
+                "poolName": 卡池名稱 (字串)
+                "operators": 陣列，每個元素為 {"name": 幹員名稱, "star": 星級數字, "time": 獲得時間字串 YYYY-MM-DD HH:mm:ss}
+                注意：畫面中若有標示 6★ 即為 6 星。
+            `;
+
+            // 使用 Gemini 2.5 Flash
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+            
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contents: [{
+                        parts: [
+                            { text: prompt },
+                            { inlineData: { mimeType: "image/png", data: base64Data.split(',')[1] } }
+                        ]
+                    }],
+                    generationConfig: { responseMimeType: "application/json" }
+                })
+            });
+
+            const data = await response.json();
+            const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+            return JSON.parse(text);
+        }
+
+        function processResult(data) {
+            if (!data.poolName) return;
+
+            if (!db.pools[data.poolName]) {
+                db.pools[data.poolName] = { puName: "", records: [] };
+            }
+
+            // 合併並去重 (根據時間和名稱)
+            data.operators.forEach(op => {
+                const exists = db.pools[data.poolName].records.find(r => r.time === op.time && r.name === op.name);
+                if (!exists) {
+                    db.pools[data.poolName].records.push(op);
+                }
+            });
+
+            // 按時間排序
+            db.pools[data.poolName].records.sort((a, b) => new Date(a.time) - new Date(b.time));
+        }
+
+        // --- UI 渲染 ---
+
+        function saveAndRender() {
+            localStorage.setItem(DB_STORE, JSON.stringify(db));
+            renderAll();
+        }
+
+        function renderAll() {
+            renderStats();
+            renderPools();
+        }
+
+        function renderStats() {
+            let totalPuPulls = 0;
+            let puCount = 0;
+            let total6Stars = 0;
+            let totalOffBanner = 0;
+
+            Object.values(db.pools).forEach(pool => {
+                if (!pool.puName) return;
+
+                let pullCounter = 0;
+                let foundPu = false;
+
+                pool.records.forEach(op => {
+                    pullCounter++;
+                    if (op.star === 6) {
+                        total6Stars++;
+                        if (op.name === pool.puName) {
+                            totalPuPulls += pullCounter;
+                            puCount++;
+                            pullCounter = 0; // 算出一個後重置計算下一個
+                            foundPu = true;
+                        } else {
+                            totalOffBanner++;
+                        }
+                    }
+                });
+            });
+
+            document.getElementById('avgPuPulls').innerText = puCount > 0 ? (totalPuPulls / puCount).toFixed(1) : "--";
+            document.getElementById('offBannerRate').innerText = total6Stars > 0 ? ((totalOffBanner / total6Stars) * 100).toFixed(1) + "%" : "--%";
+        }
+
+        function renderPools() {
+            const container = document.getElementById('poolContainer');
+            container.innerHTML = '';
+
+            Object.keys(db.pools).forEach(poolName => {
+                const pool = db.pools[poolName];
+                const poolDiv = document.createElement('div');
+                poolDiv.className = 'ak-border-box overflow-hidden';
+
+                // 計算針對 PU 的出貨歷史
+                let pullSummaries = [];
+                if (pool.puName) {
+                    let currentCount = 0;
+                    pool.records.forEach(op => {
+                        currentCount++;
+                        if (op.star === 6) {
+                            pullSummaries.push({
+                                name: op.name,
+                                pulls: currentCount,
+                                isPu: op.name === pool.puName
+                            });
+                            currentCount = 0;
+                        }
+                    });
+                }
+
+                poolDiv.innerHTML = `
+                    <div class="p-4 bg-zinc-800 flex justify-between items-center border-b border-zinc-700">
+                        <div>
+                            <button onclick="openPuModal('${poolName}')" class="text-xl font-bold hover:text-cyan-400 text-left">
+                                ${poolName} <i class="fas fa-edit text-xs opacity-30"></i>
+                            </button>
+                            <div class="text-xs opacity-50 mt-1">總計 ${pool.records.length} 抽</div>
+                        </div>
+                        <button onclick="deletePool('${poolName}')" class="text-zinc-600 hover:text-red-500"><i class="fas fa-trash"></i></button>
+                    </div>
+                    <div class="p-4 bg-black/40">
+                        ${pool.puName ? `
+                            <div class="mb-4 flex flex-wrap gap-2">
+                                <span class="text-xs bg-cyan-900/50 text-cyan-200 px-2 py-1">目標: ${pool.puName}</span>
+                                ${pullSummaries.map(s => `
+                                    <span class="text-xs px-2 py-1 ${s.isPu ? 'pu-star-6' : 'bg-red-900/30 text-red-300'}">
+                                        ${s.name} [${s.pulls}抽]
+                                    </span>
+                                `).join('')}
+                            </div>
+                        ` : `<div class="text-xs opacity-30 mb-4 italic">點擊卡池名稱設定 PU 角色以分析出貨率</div>`}
+                        
+                        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-8 gap-2">
+                            ${pool.records.map(op => `
+                                <div class="p-2 bg-zinc-800/50 border border-zinc-700 text-center ${op.name === pool.puName ? 'pu-star-6' : ''}">
+                                    <div class="text-[10px] opacity-40 leading-none mb-1">${op.time.split(' ')[0]}</div>
+                                    <div class="font-bold text-sm truncate">${op.name}</div>
+                                    <div class="text-[10px] ${op.star === 6 ? 'star-6' : op.star === 5 ? 'star-5' : 'opacity-40'}">
+                                        ${'★'.repeat(op.star)}
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `;
+                container.appendChild(poolDiv);
+            });
+        }
+
+        // --- 彈窗控制 ---
+        let currentEditingPool = "";
+
+        function openPuModal(poolName) {
+            currentEditingPool = poolName;
+            document.getElementById('puInput').value = db.pools[poolName].puName;
+            document.getElementById('puModal').classList.remove('hidden');
+        }
+
+        function closeModal() {
+            document.getElementById('puModal').classList.add('hidden');
+        }
+
+        function savePU() {
+            const val = document.getElementById('puInput').value;
+            db.pools[currentEditingPool].puName = val;
+            closeModal();
+            saveAndRender();
+        }
+
+        function deletePool(name) {
+            if (confirm(`確定要刪除卡池「${name}」的所有紀錄嗎？`)) {
+                delete db.pools[name];
+                saveAndRender();
+            }
+        }
+
+        // --- 工具函數 ---
+
+        function fileToBase64(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = error => reject(error);
+            });
+        }
+
+        function exportData() {
+            const blob = new Blob([JSON.stringify(db, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `arknights_pulls_${new Date().getTime()}.json`;
+            a.click();
+        }
+
+        function importData(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    db = JSON.parse(e.target.result);
+                    saveAndRender();
+                } catch (err) {
+                    alert("導入失敗：無效的檔案格式");
+                }
+            };
+            reader.readAsText(file);
+        }
     </script>
 </body>
 </html>
