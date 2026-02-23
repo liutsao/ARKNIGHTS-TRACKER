@@ -309,7 +309,7 @@
                 }
             `;
 
-            const model = "gemini-1.5-flash";
+            const model = "gemini-2.5-flash";
             const url = `https://generativelanguage.googleapis.com/v1/models/${model}:generateContent?key=${apiKey}`;
 
             try {
@@ -428,7 +428,6 @@
                     currentCount++;
                     if (op.star === 6) {
                         pullSummaries.push({ name: op.name, pulls: currentCount, isPu: op.name === pool.puName });
-                        currentCount = 0;
                     }
                 });
 
