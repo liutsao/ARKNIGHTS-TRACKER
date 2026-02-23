@@ -272,22 +272,6 @@
             if (!data || !data.poolName || !data.operators) return;
 
             if (!db.pools[data.poolName]) {
-                db.pools[data.poolName] = { 
-                    puName: "", 
-                    records: [], 
-                    isCollapsed: false // 預設為展開（或 true 預設收合）
-                };
-            }
-
-            function toggleCollapse(poolName) {
-                // 切換該卡池的收合狀態
-                db.pools[poolName].isCollapsed = !db.pools[poolName].isCollapsed;
-                
-                // 儲存並重新渲染介面
-                saveAndRender();
-            }
-
-            if (!db.pools[data.poolName]) {
                 db.pools[data.poolName] = { puName: "", records: [] };
             }
 
@@ -369,23 +353,14 @@
                 });
 
                 poolDiv.innerHTML = `
-                <!-- 整個標題列改為點擊可以收合，除了刪除按鈕 -->
-                <div class="p-4 bg-zinc-800/80 flex justify-between items-center border-b border-zinc-700 cursor-pointer" onclick="toggleCollapse('${poolName.replace(/'/g, "\\'")}')">
-                    <div class="flex items-center gap-3">
-                        <!-- 這裡多加一個小箭頭，根據狀態決定是向下還是向右 -->
-                        <i class="fas ${pool.isCollapsed ? 'fa-chevron-right' : 'fa-chevron-down'} text-[10px] text-cyan-500"></i>
-                        <div>
+                    <div class="p-4 bg-zinc-800/80 flex justify-between items-center border-b border-zinc-700">
+                        <div class="cursor-pointer" onclick="openPuModal('${poolName.replace(/'/g, "\\'")}')">
                             <h2 class="text-lg font-bold text-white tracking-tight">${poolName}</h2>
                             <span class="text-[10px] text-cyan-500 bg-cyan-950 px-2 py-0.5 font-mono">COUNT: ${pool.records.length}</span>
                         </div>
+                        <button onclick="deletePool('${poolName.replace(/'/g, "\\'")}')" class="text-zinc-500 hover:text-red-500 p-2"><i class="fas fa-times"></i></button>
                     </div>
-                    <!-- 刪除按鈕要加上 event.stopPropagation() 防止點擊時也觸發了收合 -->
-                    <button onclick="event.stopPropagation(); deletePool('${poolName.replace(/'/g, "\\'")}')" class="text-zinc-500 hover:text-red-500 p-2">
-                        <i class="fas fa-times"></i>
-                    </button>
-                </div>
-                    <!-- 使用 ${pool.isCollapsed ? 'hidden' : ''} 來決定要不要顯示內容 -->
-                    <div class="p-4 ${pool.isCollapsed ? 'hidden' : ''}">
+                    <div class="p-4">
                         ${pool.puName ? `
                             <div class="mb-4 flex flex-wrap gap-2">
                                 <span class="text-[10px] bg-white text-black px-2 font-bold flex items-center">PU: ${pool.puName}</span>
