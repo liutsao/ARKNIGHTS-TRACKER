@@ -348,7 +348,6 @@
                     currentCount++;
                     if (op.star === 6) {
                         pullSummaries.push({ name: op.name, pulls: currentCount, isPu: op.name === pool.puName });
-                        currentCount = 0; // 如果您之前想要累計抽數，可以將此行註解
                     }
                 });
 
