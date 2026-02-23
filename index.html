@@ -44,6 +44,7 @@
 
         .ak-btn:hover { background: var(--ak-cyan); color: #000; }
         .ak-btn.primary { background: var(--ak-cyan); color: #000; }
+        .ak-btn.manual { background: #3f3f3f; color: var(--ak-yellow); border: 1px solid #555; }
 
         .ak-border-box {
             border-left: 4px solid var(--ak-cyan);
@@ -84,6 +85,8 @@
             padding: 8px;
             border-left: 2px solid var(--ak-red);
         }
+
+        input::placeholder { opacity: 0.3; }
     </style>
 </head>
 <body class="p-4 md:p-8">
@@ -95,6 +98,7 @@
         </div>
         <div class="flex gap-2 flex-wrap">
             <input type="password" id="apiKey" placeholder="輸入 Gemini API Key" class="text-sm bg-zinc-900 border border-zinc-700 px-3 py-2 outline-none focus:border-cyan-500 text-white">
+            <button onclick="openManualInputModal()" class="ak-btn manual text-xs"><i class="fas fa-keyboard"></i> 手動錄入</button>
             <button onclick="exportData()" class="ak-btn text-xs"><i class="fas fa-file-export"></i> 導出</button>
             <label class="ak-btn text-xs cursor-pointer">
                 <i class="fas fa-file-import"></i> 導入
@@ -135,14 +139,54 @@
 
     <main id="poolContainer" class="space-y-6"></main>
 
+    <!-- 設定 PU 幹員的視窗 -->
     <div id="puModal" class="modal-overlay fixed inset-0 hidden z-50 flex items-center justify-center p-4">
         <div class="bg-zinc-900 p-6 w-full max-w-sm border border-cyan-900">
             <h3 class="text-lg font-bold mb-2 text-cyan-400 italic">SET UP RATE-UP UNIT</h3>
             <p class="text-[10px] mb-4 opacity-50">請輸入該卡池的目標六星幹員名稱，系統將自動校對出貨消耗。</p>
             <input type="text" id="puInput" class="w-full mb-6 p-2 bg-black border border-zinc-700 focus:border-cyan-500 outline-none text-white">
             <div class="flex justify-end gap-3">
-                <button onclick="closeModal()" class="text-xs opacity-50 uppercase">Cancel</button>
+                <button onclick="closeModal('puModal')" class="text-xs opacity-50 uppercase">Cancel</button>
                 <button onclick="savePU()" class="ak-btn primary text-xs">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 手動錄入視窗 -->
+    <div id="manualInputModal" class="modal-overlay fixed inset-0 hidden z-50 flex items-center justify-center p-4">
+        <div class="bg-zinc-900 p-6 w-full max-w-md border border-yellow-700">
+            <h3 class="text-lg font-bold mb-2 text-yellow-500 italic">MANUAL DATA ENTRY</h3>
+            <p class="text-[10px] mb-4 opacity-50">手動增加單筆抽取記錄至資料庫。</p>
+            
+            <div class="space-y-4">
+                <div>
+                    <label class="text-[10px] text-zinc-500 uppercase">卡池名稱</label>
+                    <input type="text" id="manualPoolName" placeholder="例如：往日幻象" class="w-full p-2 bg-black border border-zinc-700 focus:border-yellow-500 outline-none text-white text-sm">
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="text-[10px] text-zinc-500 uppercase">幹員名稱</label>
+                        <input type="text" id="manualOpName" placeholder="例如：史爾特爾" class="w-full p-2 bg-black border border-zinc-700 focus:border-yellow-500 outline-none text-white text-sm">
+                    </div>
+                    <div>
+                        <label class="text-[10px] text-zinc-500 uppercase">幹員星級</label>
+                        <select id="manualOpStar" class="w-full p-2 bg-black border border-zinc-700 focus:border-yellow-500 outline-none text-white text-sm">
+                            <option value="6">6 ★</option>
+                            <option value="5">5 ★</option>
+                            <option value="4">4 ★</option>
+                            <option value="3">3 ★</option>
+                        </select>
+                    </div>
+                </div>
+                <div>
+                    <label class="text-[10px] text-zinc-500 uppercase">獲得時間</label>
+                    <input type="text" id="manualOpTime" placeholder="YYYY-MM-DD HH:mm:ss" class="w-full p-2 bg-black border border-zinc-700 focus:border-yellow-500 outline-none text-white text-sm">
+                </div>
+            </div>
+
+            <div class="flex justify-end gap-3 mt-8">
+                <button onclick="closeModal('manualInputModal')" class="text-xs opacity-50 uppercase">Cancel</button>
+                <button onclick="saveManualEntry()" class="ak-btn primary text-xs" style="background: var(--ak-yellow);">Add Record</button>
             </div>
         </div>
     </div>
@@ -164,6 +208,42 @@
                 } catch(e) { db = { pools: {} }; }
             }
         };
+
+        // 開啟手動錄入 Modal
+        function openManualInputModal() {
+            const now = new Date();
+            const formattedTime = now.getFullYear() + "-" + 
+                String(now.getMonth() + 1).padStart(2, '0') + "-" + 
+                String(now.getDate()).padStart(2, '0') + " " + 
+                String(now.getHours()).padStart(2, '0') + ":" + 
+                String(now.getMinutes()).padStart(2, '0') + ":" + 
+                String(now.getSeconds()).padStart(2, '0');
+            
+            document.getElementById('manualOpTime').value = formattedTime;
+            document.getElementById('manualInputModal').classList.remove('hidden');
+        }
+
+        // 儲存手動錄入
+        function saveManualEntry() {
+            const poolName = document.getElementById('manualPoolName').value.trim();
+            const opName = document.getElementById('manualOpName').value.trim();
+            const opStar = parseInt(document.getElementById('manualOpStar').value);
+            const opTime = document.getElementById('manualOpTime').value.trim();
+
+            if (!poolName || !opName || !opTime) {
+                alert("請填寫完整資訊。");
+                return;
+            }
+
+            const newOp = { name: opName, star: opStar, time: opTime };
+            processResult({ poolName: poolName, operators: [newOp] });
+            
+            saveAndRender();
+            closeModal('manualInputModal');
+            
+            // 清空輸入框以便下次使用
+            document.getElementById('manualOpName').value = "";
+        }
 
         async function handleUpload(event) {
             const files = Array.from(event.target.files);
@@ -348,6 +428,7 @@
                     currentCount++;
                     if (op.star === 6) {
                         pullSummaries.push({ name: op.name, pulls: currentCount, isPu: op.name === pool.puName });
+                        currentCount = 0;
                     }
                 });
 
@@ -386,22 +467,14 @@
             });
         }
 
-        // 編輯幹員功能
         function editOperator(poolName, recordIndex) {
             const op = db.pools[poolName].records[recordIndex];
-            
-            // 使用 window.prompt 進行簡單編輯
             const newName = window.prompt("請輸入幹員名稱：", op.name);
-            if (newName === null) return; // 取消則返回
-
+            if (newName === null) return;
             const newStar = window.prompt("請輸入星級 (3, 4, 5, 6)：", op.star);
             if (newStar === null) return;
-
-            // 更新數據
             op.name = newName.trim() || op.name;
             op.star = parseInt(newStar) || op.star;
-
-            // 存檔並重繪
             saveAndRender();
         }
 
@@ -411,10 +484,12 @@
             document.getElementById('puInput').value = db.pools[name].puName;
             document.getElementById('puModal').classList.remove('hidden');
         }
-        function closeModal() { document.getElementById('puModal').classList.add('hidden'); }
+        function closeModal(modalId) { 
+            document.getElementById(modalId).classList.add('hidden'); 
+        }
         function savePU() {
             db.pools[currentEditingPool].puName = document.getElementById('puInput').value.trim();
-            closeModal();
+            closeModal('puModal');
             saveAndRender();
         }
         function deletePool(name) {
