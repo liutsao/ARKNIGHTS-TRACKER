@@ -150,8 +150,8 @@
 
     <script>
         let db = { pools: {} };
-        const DB_KEY = 'arknights_tracker_v2';
-        const API_KEY_KEY = 'arknights_gemini_key';
+        const DB_KEY = 'arknights_tracker_v3';
+        const API_KEY_KEY = 'arknights_gemini_key_v3';
 
         window.onload = () => {
             const savedKey = localStorage.getItem(API_KEY_KEY);
@@ -203,7 +203,6 @@
                     console.error("解析失敗:", e);
                     errorLog.innerText = `PRTS 終端錯誤: ${e.message}`;
                     errorLog.classList.remove('hidden');
-                    // 如果是模型找不到的關鍵錯誤，就停止後續處理
                     if (e.message.includes("not found")) break;
                 }
             }
@@ -231,9 +230,9 @@
                 }
             `;
 
-            // 嘗試使用更穩定的模型路徑
-            const modelName = "gemini-1.5-flash-latest";
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
+            // 切換至 v1 穩定版與通用模型名稱
+            const modelName = "gemini-1.5-flash";
+            const url = `https://generativelanguage.googleapis.com/v1/models/${modelName}:generateContent?key=${apiKey}`;
 
             try {
                 const response = await fetch(url, {
@@ -249,21 +248,19 @@
                     })
                 });
 
-                if (!response.ok) {
-                    const errData = await response.json();
-                    throw new Error(errData.error?.message || `HTTP 錯誤 ${response.status}`);
-                }
-
                 const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.error?.message || `HTTP 錯誤 ${response.status}`);
+                }
                 
                 if (!data.candidates || data.candidates.length === 0 || !data.candidates[0].content) {
                     throw new Error("API 未能產生有效的數據分析結果。");
                 }
 
                 let rawText = data.candidates[0].content.parts[0].text;
-                // 移除所有可能干擾解析的 Markdown 標籤與空白
                 const jsonMatch = rawText.match(/\{[\s\S]*\}/);
-                if (!jsonMatch) throw new Error("辨識結果無法轉化為 PRTS 標準數據格式。");
+                if (!jsonMatch) throw new Error("辨識結果格式異常，無法轉化為 PRTS 標準數據。");
                 
                 return JSON.parse(jsonMatch[0]);
             } catch (err) {
@@ -279,7 +276,6 @@
             }
 
             data.operators.forEach(op => {
-                // 檢查重複 (以時間與名稱為準)
                 const isDuplicate = db.pools[data.poolName].records.some(r => 
                     r.time === op.time && r.name === op.name
                 );
@@ -288,7 +284,6 @@
                 }
             });
 
-            // 依時間排序
             db.pools[data.poolName].records.sort((a, b) => new Date(a.time) - new Date(b.time));
         }
 
@@ -326,11 +321,8 @@
                 });
             });
 
-            const avgPullsEl = document.getElementById('avgPuPulls');
-            const offRateEl = document.getElementById('offBannerRate');
-
-            avgPullsEl.innerText = puCount > 0 ? (totalPuPulls / puCount).toFixed(1) : "--";
-            offRateEl.innerText = total6Stars > 0 ? ((totalOffBanner / total6Stars) * 100).toFixed(1) + "%" : "--%";
+            document.getElementById('avgPuPulls').innerText = puCount > 0 ? (totalPuPulls / puCount).toFixed(1) : "--";
+            document.getElementById('offBannerRate').innerText = total6Stars > 0 ? ((totalOffBanner / total6Stars) * 100).toFixed(1) + "%" : "--%";
         }
 
         function renderPools() {
@@ -405,13 +397,13 @@
             saveAndRender();
         }
         function deletePool(name) {
-            if (confirm(`確認從本地終端移除卡池記錄: ${name}？`)) {
+            if (confirm(`確認移除紀錄: ${name}？`)) {
                 delete db.pools[name];
                 saveAndRender();
             }
         }
         function clearAllData() {
-            if (confirm("警告：即將執行系統數據清空。所有本地抽卡紀錄將被移除。")) {
+            if (confirm("警告：即將執行系統數據清空。")) {
                 db = { pools: {} };
                 saveAndRender();
             }
@@ -428,7 +420,7 @@
             const blob = new Blob([JSON.stringify(db)], { type: 'application/json' });
             const a = document.createElement('a');
             a.href = URL.createObjectURL(blob);
-            a.download = `arknights_prts_log_${new Date().getTime()}.json`;
+            a.download = `prts_export_${new Date().getTime()}.json`;
             a.click();
         }
         function importData(e) {
@@ -439,7 +431,7 @@
                 try {
                     db = JSON.parse(event.target.result);
                     saveAndRender();
-                } catch(e) { alert("數據解析錯誤：備份檔案損壞或格式不符。"); }
+                } catch(e) { alert("數據解析錯誤。"); }
             };
             reader.readAsText(file);
         }
