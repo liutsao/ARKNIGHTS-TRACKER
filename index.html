@@ -355,12 +355,8 @@
             }
 
             data.operators.forEach(op => {
-                const isDuplicate = db.pools[data.poolName].records.some(r => 
-                    r.time === op.time && r.name === op.name
-                );
-                if (!isDuplicate) {
-                    db.pools[data.poolName].records.push(op);
-                }
+                // 直接推入數據，不再檢查是否重複
+                db.pools[data.poolName].records.push(op);
             });
 
             db.pools[data.poolName].records.sort((a, b) => new Date(a.time) - new Date(b.time));
