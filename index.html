@@ -83,6 +83,7 @@
             background: rgba(255, 77, 77, 0.1);
             padding: 8px;
             border-left: 2px solid var(--ak-red);
+            word-break: break-all;
         }
     </style>
 </head>
@@ -167,13 +168,13 @@
 
         async function handleUpload(event) {
             const files = Array.from(event.target.files);
-            const apiKey = document.getElementById('apiKey').value.trim();
+            const apiKeyInput = document.getElementById('apiKey').value.trim();
             
-            if (!apiKey) {
+            if (!apiKeyInput) {
                 alert("請輸入有效的 Gemini API Key。");
                 return;
             }
-            localStorage.setItem(API_KEY_KEY, apiKey);
+            localStorage.setItem(API_KEY_KEY, apiKeyInput);
 
             const progressContainer = document.getElementById('progressBarContainer');
             const progressBar = document.getElementById('progressBar');
@@ -193,24 +194,25 @@
 
                 try {
                     const base64 = await fileToBase64(files[i]);
-                    const result = await recognizeImage(base64, apiKey);
+                    const result = await recognizeImage(base64, apiKeyInput);
                     if (result) {
                         processResult(result);
+                        saveAndRender();
                     }
                 } catch (e) {
                     console.error("解析失敗:", e);
                     errorLog.innerText = `PRTS 終端錯誤: ${e.message}`;
                     errorLog.classList.remove('hidden');
-                    break; // 發生關鍵錯誤時停止處理
+                    // 如果是模型找不到的關鍵錯誤，就停止後續處理
+                    if (e.message.includes("not found")) break;
                 }
             }
 
             progressBar.style.width = `100%`;
-            setTimeout(() => {
-                if (errorLog.classList.contains('hidden')) progressContainer.classList.add('hidden');
-            }, 3000);
+            if (errorLog.classList.contains('hidden')) {
+                setTimeout(() => progressContainer.classList.add('hidden'), 2000);
+            }
             statusText.innerText = "系統狀態: 數據同步完成";
-            saveAndRender();
         }
 
         async function recognizeImage(base64Data, apiKey) {
@@ -229,9 +231,9 @@
                 }
             `;
 
-            // 使用穩定的 gemini-1.5-flash 模型
-            const model = "gemini-1.5-flash";
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+            // 嘗試使用更穩定的模型路徑
+            const modelName = "gemini-1.5-flash-latest";
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
 
             try {
                 const response = await fetch(url, {
@@ -249,18 +251,19 @@
 
                 if (!response.ok) {
                     const errData = await response.json();
-                    throw new Error(errData.error?.message || `HTTP ${response.status}`);
+                    throw new Error(errData.error?.message || `HTTP 錯誤 ${response.status}`);
                 }
 
                 const data = await response.json();
                 
-                if (!data.candidates || data.candidates.length === 0) {
-                    throw new Error("API 未回傳有效候選結果。");
+                if (!data.candidates || data.candidates.length === 0 || !data.candidates[0].content) {
+                    throw new Error("API 未能產生有效的數據分析結果。");
                 }
 
-                const rawText = data.candidates[0].content.parts[0].text;
+                let rawText = data.candidates[0].content.parts[0].text;
+                // 移除所有可能干擾解析的 Markdown 標籤與空白
                 const jsonMatch = rawText.match(/\{[\s\S]*\}/);
-                if (!jsonMatch) throw new Error("辨識結果無法轉化為數據格式。");
+                if (!jsonMatch) throw new Error("辨識結果無法轉化為 PRTS 標準數據格式。");
                 
                 return JSON.parse(jsonMatch[0]);
             } catch (err) {
@@ -276,6 +279,7 @@
             }
 
             data.operators.forEach(op => {
+                // 檢查重複 (以時間與名稱為準)
                 const isDuplicate = db.pools[data.poolName].records.some(r => 
                     r.time === op.time && r.name === op.name
                 );
@@ -284,6 +288,7 @@
                 }
             });
 
+            // 依時間排序
             db.pools[data.poolName].records.sort((a, b) => new Date(a.time) - new Date(b.time));
         }
 
@@ -355,8 +360,8 @@
 
                 poolDiv.innerHTML = `
                     <div class="p-4 bg-zinc-800/80 flex justify-between items-center border-b border-zinc-700">
-                        <div class="cursor-pointer" onclick="openPuModal('${poolName.replace(/'/g, "\\'")}')">
-                            <h2 class="text-lg font-bold text-white tracking-tight">${poolName}</h2>
+                        <div class="cursor-pointer group" onclick="openPuModal('${poolName.replace(/'/g, "\\'")}')">
+                            <h2 class="text-lg font-bold text-white tracking-tight group-hover:text-cyan-400 transition-colors">${poolName}</h2>
                             <span class="text-[10px] text-cyan-500 bg-cyan-950 px-2 py-0.5 font-mono">COUNT: ${pool.records.length}</span>
                         </div>
                         <button onclick="deletePool('${poolName.replace(/'/g, "\\'")}')" class="text-zinc-500 hover:text-red-500 p-2"><i class="fas fa-times"></i></button>
@@ -400,13 +405,13 @@
             saveAndRender();
         }
         function deletePool(name) {
-            if (confirm(`確認移除卡池記錄: ${name}？`)) {
+            if (confirm(`確認從本地終端移除卡池記錄: ${name}？`)) {
                 delete db.pools[name];
                 saveAndRender();
             }
         }
         function clearAllData() {
-            if (confirm("警告：即將清空所有本地抽卡紀錄。")) {
+            if (confirm("警告：即將執行系統數據清空。所有本地抽卡紀錄將被移除。")) {
                 db = { pools: {} };
                 saveAndRender();
             }
@@ -423,7 +428,7 @@
             const blob = new Blob([JSON.stringify(db)], { type: 'application/json' });
             const a = document.createElement('a');
             a.href = URL.createObjectURL(blob);
-            a.download = `arknights_prts_log.json`;
+            a.download = `arknights_prts_log_${new Date().getTime()}.json`;
             a.click();
         }
         function importData(e) {
@@ -434,7 +439,7 @@
                 try {
                     db = JSON.parse(event.target.result);
                     saveAndRender();
-                } catch(e) { alert("無效的備份檔案。"); }
+                } catch(e) { alert("數據解析錯誤：備份檔案損壞或格式不符。"); }
             };
             reader.readAsText(file);
         }
