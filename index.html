@@ -81,7 +81,7 @@
             font-size: 11px;
             margin-top: 8px;
             background: rgba(255, 77, 77, 0.1);
-            padding: 8px;
+            padding: 10px;
             border-left: 2px solid var(--ak-red);
             word-break: break-all;
         }
@@ -95,12 +95,8 @@
             <p class="text-xs text-cyan-400" id="statusText">系統狀態: 待機中</p>
         </div>
         <div class="flex gap-2 flex-wrap">
-            <input type="password" id="apiKey" placeholder="輸入 Gemini API Key" class="text-sm bg-zinc-900 border border-zinc-700 px-3 py-2 outline-none focus:border-cyan-500 text-white">
+            <input type="password" id="apiKey" placeholder="輸入 Gemini API Key" class="text-sm bg-zinc-900 border border-zinc-700 px-3 py-2 outline-none focus:border-cyan-500 text-white w-64">
             <button onclick="exportData()" class="ak-btn text-xs"><i class="fas fa-file-export"></i> 導出</button>
-            <label class="ak-btn text-xs cursor-pointer">
-                <i class="fas fa-file-import"></i> 導入
-                <input type="file" id="importFile" class="hidden" onchange="importData(event)">
-            </label>
             <button onclick="clearAllData()" class="ak-btn text-xs bg-red-900/20 text-red-400 hover:bg-red-500 hover:text-white"><i class="fas fa-trash"></i> 清空</button>
         </div>
     </header>
@@ -120,26 +116,27 @@
         <div class="border-2 border-dashed border-zinc-700 rounded p-8 text-center hover:border-cyan-500 transition-all bg-zinc-900/30">
             <input type="file" id="imageUpload" multiple accept="image/*" class="hidden" onchange="handleUpload(event)">
             <label for="imageUpload" class="cursor-pointer group">
-                <i class="fas fa-terminal text-4xl mb-4 text-zinc-600 group-hover:text-cyan-500 transition-colors"></i>
-                <p class="text-zinc-400 group-hover:text-zinc-200">點擊上傳或拖放抽卡紀錄截圖</p>
-                <p class="text-[10px] opacity-40 mt-2">支援多張上傳 | 自動辨識卡池與幹員</p>
+                <i class="fas fa-camera text-4xl mb-4 text-zinc-600 group-hover:text-cyan-500 transition-colors"></i>
+                <p class="text-zinc-400">點擊上傳或拖放抽卡紀錄截圖</p>
+                <p class="text-[10px] opacity-40 mt-2 italic">提示：系統將嘗試自動解析卡池與幹員數據</p>
             </label>
         </div>
         <div id="progressBarContainer" class="mt-4 hidden">
             <div class="w-full bg-zinc-800 h-0.5 mb-1">
                 <div id="progressBar" class="loading-bar" style="width: 0%"></div>
             </div>
-            <p id="progressLabel" class="text-[10px] text-cyan-500 uppercase">正在解析資料...</p>
+            <p id="progressLabel" class="text-[10px] text-cyan-500 uppercase">正在初始化解析引擎...</p>
             <div id="apiErrorLog" class="error-msg hidden"></div>
         </div>
     </section>
 
     <main id="poolContainer" class="space-y-6"></main>
 
+    <!-- PU 設定彈窗 -->
     <div id="puModal" class="modal-overlay fixed inset-0 hidden z-50 flex items-center justify-center p-4">
         <div class="bg-zinc-900 p-6 w-full max-w-sm border border-cyan-900">
             <h3 class="text-lg font-bold mb-2 text-cyan-400 italic">SET UP RATE-UP UNIT</h3>
-            <p class="text-[10px] mb-4 opacity-50">請輸入該卡池的目標六星幹員名稱，系統將自動校對出貨消耗。</p>
+            <p class="text-[10px] mb-4 opacity-50">請輸入該卡池的目標六星幹員名稱，系統將自動計算消耗。</p>
             <input type="text" id="puInput" class="w-full mb-6 p-2 bg-black border border-zinc-700 focus:border-cyan-500 outline-none text-white">
             <div class="flex justify-end gap-3">
                 <button onclick="closeModal()" class="text-xs opacity-50 uppercase">Cancel</button>
@@ -150,141 +147,97 @@
 
     <script>
         let db = { pools: {} };
-        const DB_KEY = 'arknights_tracker_v3';
-        const API_KEY_KEY = 'arknights_gemini_key_v3';
+        const DB_KEY = 'arknights_tracker_v4';
+        const MODEL_CANDIDATES = ["gemini-1.5-flash", "gemini-1.5-flash-8b", "gemini-2.0-flash-exp"];
 
         window.onload = () => {
-            const savedKey = localStorage.getItem(API_KEY_KEY);
+            const savedKey = localStorage.getItem('arknights_gemini_key');
             if (savedKey) document.getElementById('apiKey').value = savedKey;
-
             const savedDb = localStorage.getItem(DB_KEY);
-            if (savedDb) {
-                try {
-                    db = JSON.parse(savedDb);
-                    renderAll();
-                } catch(e) { db = { pools: {} }; }
-            }
+            if (savedDb) { try { db = JSON.parse(savedDb); renderAll(); } catch(e) {} }
         };
 
         async function handleUpload(event) {
             const files = Array.from(event.target.files);
-            const apiKeyInput = document.getElementById('apiKey').value.trim();
-            
-            if (!apiKeyInput) {
-                alert("請輸入有效的 Gemini API Key。");
-                return;
-            }
-            localStorage.setItem(API_KEY_KEY, apiKeyInput);
+            const apiKey = document.getElementById('apiKey').value.trim();
+            if (!apiKey) return alert("請輸入 API Key");
+            localStorage.setItem('arknights_gemini_key', apiKey);
 
-            const progressContainer = document.getElementById('progressBarContainer');
-            const progressBar = document.getElementById('progressBar');
-            const progressLabel = document.getElementById('progressLabel');
-            const statusText = document.getElementById('statusText');
+            const container = document.getElementById('progressBarContainer');
+            const bar = document.getElementById('progressBar');
+            const label = document.getElementById('progressLabel');
             const errorLog = document.getElementById('apiErrorLog');
 
-            errorLog.innerText = "";
+            container.classList.remove('hidden');
             errorLog.classList.add('hidden');
-            progressContainer.classList.remove('hidden');
-            statusText.innerText = "系統狀態: 正在連接 PRTS 數據庫...";
+            document.getElementById('statusText').innerText = "系統狀態: 正在連接 PRTS...";
 
             for (let i = 0; i < files.length; i++) {
-                const percent = ((i / files.length) * 100).toFixed(0);
-                progressBar.style.width = `${percent}%`;
-                progressLabel.innerText = `正在處理檔案 (${i+1}/${files.length})...`;
+                bar.style.width = `${((i / files.length) * 100)}%`;
+                label.innerText = `處理中 (${i+1}/${files.length}): ${files[i].name}`;
 
                 try {
                     const base64 = await fileToBase64(files[i]);
-                    const result = await recognizeImage(base64, apiKeyInput);
+                    const result = await recognizeWithRetry(base64, apiKey);
                     if (result) {
-                        processResult(result);
+                        processData(result);
                         saveAndRender();
                     }
                 } catch (e) {
-                    console.error("解析失敗:", e);
-                    errorLog.innerText = `PRTS 終端錯誤: ${e.message}`;
+                    errorLog.innerText = `[ERROR] ${e.message}`;
                     errorLog.classList.remove('hidden');
-                    if (e.message.includes("not found")) break;
+                    break;
                 }
             }
-
-            progressBar.style.width = `100%`;
-            if (errorLog.classList.contains('hidden')) {
-                setTimeout(() => progressContainer.classList.add('hidden'), 2000);
-            }
-            statusText.innerText = "系統狀態: 數據同步完成";
+            bar.style.width = '100%';
+            label.innerText = "同步完成";
+            document.getElementById('statusText').innerText = "系統狀態: 數據同步完畢";
+            setTimeout(() => container.classList.add('hidden'), 3000);
         }
 
-        async function recognizeImage(base64Data, apiKey) {
-            const prompt = `
-                你是一位專業的明日方舟數據分析員。
-                請辨識這張截圖中的：
-                1. 卡池名稱 (如: 往日幻象)
-                2. 獲得的所有幹員名稱、星級(3, 4, 5, 6)、獲得時間(格式: YYYY-MM-DD HH:mm:ss)。
-                
-                請嚴格輸出 JSON 格式，不要包含其他解釋字串：
-                {
-                  "poolName": "卡池名稱",
-                  "operators": [
-                    {"name": "幹員名稱", "star": 6, "time": "2024-03-20 14:00:00"}
-                  ]
+        async function recognizeWithRetry(base64, apiKey) {
+            let lastError = null;
+            for (const model of MODEL_CANDIDATES) {
+                try {
+                    return await callGeminiAPI(base64, apiKey, model);
+                } catch (e) {
+                    lastError = e;
                 }
-            `;
-
-            // 切換至 v1 穩定版與通用模型名稱
-            const modelName = "gemini-1.5-flash";
-            const url = `https://generativelanguage.googleapis.com/v1/models/${modelName}:generateContent?key=${apiKey}`;
-
-            try {
-                const response = await fetch(url, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        contents: [{
-                            parts: [
-                                { text: prompt },
-                                { inlineData: { mimeType: "image/png", data: base64Data.split(',')[1] } }
-                            ]
-                        }]
-                    })
-                });
-
-                const data = await response.json();
-
-                if (!response.ok) {
-                    throw new Error(data.error?.message || `HTTP 錯誤 ${response.status}`);
-                }
-                
-                if (!data.candidates || data.candidates.length === 0 || !data.candidates[0].content) {
-                    throw new Error("API 未能產生有效的數據分析結果。");
-                }
-
-                let rawText = data.candidates[0].content.parts[0].text;
-                const jsonMatch = rawText.match(/\{[\s\S]*\}/);
-                if (!jsonMatch) throw new Error("辨識結果格式異常，無法轉化為 PRTS 標準數據。");
-                
-                return JSON.parse(jsonMatch[0]);
-            } catch (err) {
-                throw err;
             }
+            throw new Error(`嘗試多個模型後失敗。最後錯誤: ${lastError.message}`);
         }
 
-        function processResult(data) {
-            if (!data || !data.poolName || !data.operators) return;
-
-            if (!db.pools[data.poolName]) {
-                db.pools[data.poolName] = { puName: "", records: [] };
-            }
-
-            data.operators.forEach(op => {
-                const isDuplicate = db.pools[data.poolName].records.some(r => 
-                    r.time === op.time && r.name === op.name
-                );
-                if (!isDuplicate) {
-                    db.pools[data.poolName].records.push(op);
-                }
+        async function callGeminiAPI(base64, apiKey, model) {
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contents: [{
+                        parts: [
+                            { text: "辨識圖中明日方舟抽卡紀錄。輸出為JSON格式: { \"poolName\": \"名稱\", \"operators\": [{\"name\":\"名\",\"star\":6,\"time\":\"YYYY-MM-DD HH:mm:ss\"}] }。只回傳JSON。" },
+                            { inlineData: { mimeType: "image/png", data: base64.split(',')[1] } }
+                        ]
+                    }],
+                    generationConfig: { responseMimeType: "application/json" }
+                })
             });
 
-            db.pools[data.poolName].records.sort((a, b) => new Date(a.time) - new Date(b.time));
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error?.message || "API Error");
+            const content = data.candidates?.[0]?.content?.parts?.[0]?.text;
+            return JSON.parse(content);
+        }
+
+        function processData(data) {
+            const poolName = data.poolName || "未知卡池";
+            if (!db.pools[poolName]) db.pools[poolName] = { puName: "", records: [] };
+            
+            data.operators.forEach(op => {
+                const exists = db.pools[poolName].records.some(r => r.time === op.time && r.name === op.name);
+                if (!exists) db.pools[poolName].records.push(op);
+            });
+            db.pools[poolName].records.sort((a, b) => new Date(a.time) - new Date(b.time));
         }
 
         function saveAndRender() {
@@ -298,10 +251,7 @@
         }
 
         function renderStats() {
-            let totalPuPulls = 0;
-            let puCount = 0;
-            let total6Stars = 0;
-            let totalOffBanner = 0;
+            let totalPuPulls = 0, puCount = 0, total6Stars = 0, totalOffBanner = 0;
 
             Object.values(db.pools).forEach(pool => {
                 if (!pool.puName) return;
@@ -328,59 +278,56 @@
         function renderPools() {
             const container = document.getElementById('poolContainer');
             container.innerHTML = '';
-
-            const sortedPoolNames = Object.keys(db.pools).sort((a, b) => {
-                const timeA = db.pools[a].records.length ? new Date(db.pools[a].records[db.pools[a].records.length-1].time) : 0;
-                const timeB = db.pools[b].records.length ? new Date(db.pools[b].records[db.pools[b].records.length-1].time) : 0;
+            
+            const sortedKeys = Object.keys(db.pools).sort((a,b) => {
+                const timeA = db.pools[a].records.length ? new Date(db.pools[a].records[0].time) : 0;
+                const timeB = db.pools[b].records.length ? new Date(db.pools[b].records[0].time) : 0;
                 return timeB - timeA;
             });
 
-            sortedPoolNames.forEach(poolName => {
-                const pool = db.pools[poolName];
-                const poolDiv = document.createElement('div');
-                poolDiv.className = 'ak-border-box overflow-hidden mb-6';
-
-                let pullSummaries = [];
-                let currentCount = 0;
-                pool.records.forEach(op => {
-                    currentCount++;
-                    if (op.star === 6) {
-                        pullSummaries.push({ name: op.name, pulls: currentCount, isPu: op.name === pool.puName });
-                        currentCount = 0;
+            sortedKeys.forEach(name => {
+                const pool = db.pools[name];
+                const div = document.createElement('div');
+                div.className = 'ak-border-box overflow-hidden mb-6';
+                
+                let sixStarSummary = [];
+                let count = 0;
+                pool.records.forEach(r => {
+                    count++;
+                    if(r.star === 6) {
+                        sixStarSummary.push({ name: r.name, pulls: count, isPu: r.name === pool.puName });
+                        count = 0;
                     }
                 });
 
-                poolDiv.innerHTML = `
+                div.innerHTML = `
                     <div class="p-4 bg-zinc-800/80 flex justify-between items-center border-b border-zinc-700">
-                        <div class="cursor-pointer group" onclick="openPuModal('${poolName.replace(/'/g, "\\'")}')">
-                            <h2 class="text-lg font-bold text-white tracking-tight group-hover:text-cyan-400 transition-colors">${poolName}</h2>
-                            <span class="text-[10px] text-cyan-500 bg-cyan-950 px-2 py-0.5 font-mono">COUNT: ${pool.records.length}</span>
+                        <div class="cursor-pointer group" onclick="openPuModal('${name.replace(/'/g, "\\'")}')">
+                            <h2 class="text-lg font-bold text-white group-hover:text-cyan-400">${name}</h2>
+                            <span class="text-[10px] text-cyan-500 bg-cyan-950 px-2">COUNT: ${pool.records.length}</span>
                         </div>
-                        <button onclick="deletePool('${poolName.replace(/'/g, "\\'")}')" class="text-zinc-500 hover:text-red-500 p-2"><i class="fas fa-times"></i></button>
+                        <button onclick="deletePool('${name.replace(/'/g, "\\'")}')" class="text-zinc-500 hover:text-red-500"><i class="fas fa-times"></i></button>
                     </div>
                     <div class="p-4">
-                        ${pool.puName ? `
-                            <div class="mb-4 flex flex-wrap gap-2">
-                                <span class="text-[10px] bg-white text-black px-2 font-bold flex items-center">PU: ${pool.puName}</span>
-                                ${pullSummaries.map(s => `
-                                    <span class="text-[10px] px-2 py-1 border border-zinc-700 ${s.isPu ? 'pu-star-6 font-bold' : 'text-zinc-400 bg-zinc-800/40'}">
-                                        ${s.name} [${s.pulls}]
-                                    </span>
-                                `).join('')}
-                            </div>
-                        ` : `<p class="text-[10px] opacity-30 italic mb-4 tracking-wider underline underline-offset-4 decoration-cyan-900 cursor-pointer" onclick="openPuModal('${poolName.replace(/'/g, "\\'")}')">點擊卡池標題以設定目標 PU 六星角色</p>`}
-                        
+                        <div class="mb-4 flex flex-wrap gap-2">
+                            ${pool.puName ? `<span class="text-[10px] bg-white text-black px-2 font-bold">PU: ${pool.puName}</span>` : ''}
+                            ${sixStarSummary.map(s => `
+                                <span class="text-[10px] px-2 py-1 border border-zinc-700 ${s.isPu ? 'pu-star-6 font-bold' : 'text-zinc-400'}">
+                                    ${s.name} [${s.pulls}]
+                                </span>
+                            `).join('')}
+                        </div>
                         <div class="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-8 lg:grid-cols-10 gap-2">
-                            ${pool.records.map(op => `
-                                <div class="p-2 bg-zinc-900 border border-zinc-800 text-center ${op.name === pool.puName ? 'pu-star-6' : ''}">
-                                    <div class="text-[10px] font-bold truncate">${op.name}</div>
-                                    <div class="text-[9px] ${op.star === 6 ? 'star-6' : op.star === 5 ? 'star-5' : 'opacity-30'}">${'★'.repeat(op.star)}</div>
+                            ${pool.records.map(r => `
+                                <div class="p-2 bg-zinc-900 border border-zinc-800 text-center ${r.name === pool.puName ? 'pu-star-6' : ''}">
+                                    <div class="text-[10px] font-bold truncate">${r.name}</div>
+                                    <div class="text-[9px] ${r.star === 6 ? 'star-6' : r.star === 5 ? 'star-5' : 'opacity-30'}">${'★'.repeat(r.star)}</div>
                                 </div>
                             `).join('')}
                         </div>
                     </div>
                 `;
-                container.appendChild(poolDiv);
+                container.appendChild(div);
             });
         }
 
@@ -396,44 +343,21 @@
             closeModal();
             saveAndRender();
         }
-        function deletePool(name) {
-            if (confirm(`確認移除紀錄: ${name}？`)) {
-                delete db.pools[name];
-                saveAndRender();
-            }
-        }
-        function clearAllData() {
-            if (confirm("警告：即將執行系統數據清空。")) {
-                db = { pools: {} };
-                saveAndRender();
-            }
-        }
+        function deletePool(name) { if(confirm("確定刪除此卡池？")) { delete db.pools[name]; saveAndRender(); } }
+        function clearAllData() { if(confirm("確定清空所有數據？")) { db = { pools: {} }; saveAndRender(); } }
         function fileToBase64(file) {
-            return new Promise((resolve, reject) => {
+            return new Promise((r, j) => {
                 const reader = new FileReader();
+                reader.onload = () => r(reader.result);
                 reader.readAsDataURL(file);
-                reader.onload = () => resolve(reader.result);
-                reader.onerror = error => reject(error);
             });
         }
         function exportData() {
-            const blob = new Blob([JSON.stringify(db)], { type: 'application/json' });
+            const blob = new Blob([JSON.stringify(db)], {type:'application/json'});
             const a = document.createElement('a');
             a.href = URL.createObjectURL(blob);
-            a.download = `prts_export_${new Date().getTime()}.json`;
+            a.download = `arknights_prts_${Date.now()}.json`;
             a.click();
-        }
-        function importData(e) {
-            const file = e.target.files[0];
-            if (!file) return;
-            const reader = new FileReader();
-            reader.onload = (event) => {
-                try {
-                    db = JSON.parse(event.target.result);
-                    saveAndRender();
-                } catch(e) { alert("數據解析錯誤。"); }
-            };
-            reader.readAsText(file);
         }
     </script>
 </body>
