@@ -63,6 +63,10 @@
             color: var(--ak-yellow) !important;
         }
 
+        .off-banner-6 {
+            border: 2px solid var(--ak-yellow) !important;
+        }
+
         .star-6 { color: var(--ak-yellow); font-weight: bold; }
         .star-5 { color: #f9a8d4; }
 
@@ -440,7 +444,7 @@
                             <div class="mb-4 flex flex-wrap gap-2">
                                 <span class="text-[10px] bg-white text-black px-2 font-bold flex items-center">PU: ${pool.puName}</span>
                                 ${pullSummaries.map(s => `
-                                    <span class="text-[10px] px-2 py-1 border border-zinc-700 ${s.isPu ? 'pu-star-6 font-bold' : 'text-zinc-400 bg-zinc-800/40'}">
+                                    <span class="text-[10px] px-2 py-1 border border-zinc-700 ${s.isPu ? 'pu-star-6 font-bold' : 'off-banner-6 text-zinc-400 bg-zinc-800/40'}">
                                         ${s.name} [${s.pulls}]
                                     </span>
                                 `).join('')}
@@ -449,7 +453,8 @@
                         
                         <div class="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-8 lg:grid-cols-10 gap-2">
                             ${pool.records.map((op, idx) => `
-                                <div class="p-2 bg-zinc-900 border border-zinc-800 text-center cursor-pointer hover:border-cyan-500 transition-all ${op.name === pool.puName ? 'pu-star-6' : ''}" 
+                                <div class="p-2 bg-zinc-900 border border-zinc-800 text-center cursor-pointer hover:border-cyan-500 transition-all 
+                                    ${op.name === pool.puName ? 'pu-star-6' : (op.star === 6 ? 'off-banner-6' : '')}" 
                                      onclick="editOperator('${poolName.replace(/'/g, "\\'")}', ${idx})">
                                     <div class="text-[10px] font-bold truncate">${op.name}</div>
                                     <div class="text-[9px] ${op.star === 6 ? 'star-6' : op.star === 5 ? 'star-5' : 'opacity-30'}">${'★'.repeat(op.star)}</div>
