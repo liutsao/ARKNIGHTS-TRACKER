@@ -201,7 +201,7 @@
                     console.error("解析失敗:", e);
                     errorLog.innerText = `PRTS 終端錯誤: ${e.message}`;
                     errorLog.classList.remove('hidden');
-                    break; // 發生關鍵錯誤時停止處理
+                    break; 
                 }
             }
 
@@ -229,9 +229,8 @@
                 }
             `;
 
-            // 使用穩定的 gemini-2.5-flash 模型
-            const model = "gemini-2.5-flash";
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+            const model = "gemini-1.5-flash";
+            const url = `https://generativelanguage.googleapis.com/v1/models/${model}:generateContent?key=${apiKey}`;
 
             try {
                 const response = await fetch(url, {
@@ -266,26 +265,6 @@
             } catch (err) {
                 throw err;
             }
-        }
-
-        function editOperator(poolName, opIndex) {
-            const pool = db.pools[poolName];
-            const op = pool.records[opIndex];
-        
-            // 1. 彈出對話框修改名稱
-            const newName = window.prompt("請輸入幹員名稱：", op.name);
-            if (newName === null) return; // 如果點擊取消就停止
-        
-            // 2. 彈出對話框修改星級
-            const newStar = window.prompt("請輸入星級 (3-6)：", op.star);
-            if (newStar === null) return;
-        
-            // 3. 更新數據
-            op.name = newName;
-            op.star = parseInt(newStar) || op.star; // 確保輸入的是數字
-        
-            // 4. 儲存並重新渲染畫面
-            saveAndRender();
         }
 
         function processResult(data) {
@@ -369,6 +348,7 @@
                     currentCount++;
                     if (op.star === 6) {
                         pullSummaries.push({ name: op.name, pulls: currentCount, isPu: op.name === pool.puName });
+                        currentCount = 0; // 如果您之前想要累計抽數，可以將此行註解
                     }
                 });
 
@@ -393,14 +373,11 @@
                         ` : `<p class="text-[10px] opacity-30 italic mb-4 tracking-wider underline underline-offset-4 decoration-cyan-900 cursor-pointer" onclick="openPuModal('${poolName.replace(/'/g, "\\'")}')">點擊卡池標題以設定目標 PU 六星角色</p>`}
                         
                         <div class="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-8 lg:grid-cols-10 gap-2">
-                            ${pool.records.map(op => `
-                                <!-- 加上 onclick 點擊事件，並傳入卡池名稱與該幹員的序號 -->
-                                <div class="p-2 bg-zinc-900 border border-zinc-800 text-center cursor-pointer hover:border-cyan-500" 
-                                     onclick="editOperator('${name.replace(/'/g, "\\'")}', ${index})">
+                            ${pool.records.map((op, idx) => `
+                                <div class="p-2 bg-zinc-900 border border-zinc-800 text-center cursor-pointer hover:border-cyan-500 transition-all ${op.name === pool.puName ? 'pu-star-6' : ''}" 
+                                     onclick="editOperator('${poolName.replace(/'/g, "\\'")}', ${idx})">
                                     <div class="text-[10px] font-bold truncate">${op.name}</div>
-                                    <div class="text-[9px] ${op.star === 6 ? 'star-6' : op.star === 5 ? 'star-5' : 'opacity-30'}">
-                                        ${'★'.repeat(op.star)}
-                                    </div>
+                                    <div class="text-[9px] ${op.star === 6 ? 'star-6' : op.star === 5 ? 'star-5' : 'opacity-30'}">${'★'.repeat(op.star)}</div>
                                 </div>
                             `).join('')}
                         </div>
@@ -408,6 +385,25 @@
                 `;
                 container.appendChild(poolDiv);
             });
+        }
+
+        // 編輯幹員功能
+        function editOperator(poolName, recordIndex) {
+            const op = db.pools[poolName].records[recordIndex];
+            
+            // 使用 window.prompt 進行簡單編輯
+            const newName = window.prompt("請輸入幹員名稱：", op.name);
+            if (newName === null) return; // 取消則返回
+
+            const newStar = window.prompt("請輸入星級 (3, 4, 5, 6)：", op.star);
+            if (newStar === null) return;
+
+            // 更新數據
+            op.name = newName.trim() || op.name;
+            op.star = parseInt(newStar) || op.star;
+
+            // 存檔並重繪
+            saveAndRender();
         }
 
         let currentEditingPool = "";
