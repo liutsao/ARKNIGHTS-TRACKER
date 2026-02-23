@@ -84,6 +84,7 @@
             padding: 10px;
             border-left: 2px solid var(--ak-red);
             word-break: break-all;
+            white-space: pre-wrap;
         }
     </style>
 </head>
@@ -118,25 +119,24 @@
             <label for="imageUpload" class="cursor-pointer group">
                 <i class="fas fa-camera text-4xl mb-4 text-zinc-600 group-hover:text-cyan-500 transition-colors"></i>
                 <p class="text-zinc-400">點擊上傳或拖放抽卡紀錄截圖</p>
-                <p class="text-[10px] opacity-40 mt-2 italic">提示：系統將嘗試自動解析卡池與幹員數據</p>
+                <p class="text-[10px] opacity-40 mt-2 italic">提示：若報錯請嘗試重新產生 API Key</p>
             </label>
         </div>
         <div id="progressBarContainer" class="mt-4 hidden">
             <div class="w-full bg-zinc-800 h-0.5 mb-1">
                 <div id="progressBar" class="loading-bar" style="width: 0%"></div>
             </div>
-            <p id="progressLabel" class="text-[10px] text-cyan-500 uppercase">正在初始化解析引擎...</p>
+            <p id="progressLabel" class="text-[10px] text-cyan-500 uppercase">正在解析...</p>
             <div id="apiErrorLog" class="error-msg hidden"></div>
         </div>
     </section>
 
     <main id="poolContainer" class="space-y-6"></main>
 
-    <!-- PU 設定彈窗 -->
     <div id="puModal" class="modal-overlay fixed inset-0 hidden z-50 flex items-center justify-center p-4">
         <div class="bg-zinc-900 p-6 w-full max-w-sm border border-cyan-900">
             <h3 class="text-lg font-bold mb-2 text-cyan-400 italic">SET UP RATE-UP UNIT</h3>
-            <p class="text-[10px] mb-4 opacity-50">請輸入該卡池的目標六星幹員名稱，系統將自動計算消耗。</p>
+            <p class="text-[10px] mb-4 opacity-50">請輸入該卡池的目標六星幹員名稱。</p>
             <input type="text" id="puInput" class="w-full mb-6 p-2 bg-black border border-zinc-700 focus:border-cyan-500 outline-none text-white">
             <div class="flex justify-end gap-3">
                 <button onclick="closeModal()" class="text-xs opacity-50 uppercase">Cancel</button>
@@ -147,8 +147,7 @@
 
     <script>
         let db = { pools: {} };
-        const DB_KEY = 'arknights_tracker_v4';
-        const MODEL_CANDIDATES = ["gemini-1.5-flash", "gemini-1.5-flash-8b", "gemini-2.0-flash-exp"];
+        const DB_KEY = 'arknights_tracker_v5';
 
         window.onload = () => {
             const savedKey = localStorage.getItem('arknights_gemini_key');
@@ -170,74 +169,70 @@
 
             container.classList.remove('hidden');
             errorLog.classList.add('hidden');
-            document.getElementById('statusText').innerText = "系統狀態: 正在連接 PRTS...";
 
             for (let i = 0; i < files.length; i++) {
                 bar.style.width = `${((i / files.length) * 100)}%`;
-                label.innerText = `處理中 (${i+1}/${files.length}): ${files[i].name}`;
+                label.innerText = `處理中: ${files[i].name}`;
 
                 try {
                     const base64 = await fileToBase64(files[i]);
-                    const result = await recognizeWithRetry(base64, apiKey);
+                    // 改用最保守的 v1 調用方式
+                    const result = await callGeminiStable(base64, apiKey);
                     if (result) {
                         processData(result);
                         saveAndRender();
                     }
                 } catch (e) {
-                    errorLog.innerText = `[ERROR] ${e.message}`;
+                    errorLog.innerText = `終端報錯: ${e.message}\n\n可能原因：\n1. API Key 不支援 1.5 系列模型\n2. 您所在的地區限制\n3. 建議前往 AI Studio 重新生成一個 API Key。`;
                     errorLog.classList.remove('hidden');
                     break;
                 }
             }
             bar.style.width = '100%';
             label.innerText = "同步完成";
-            document.getElementById('statusText').innerText = "系統狀態: 數據同步完畢";
             setTimeout(() => container.classList.add('hidden'), 3000);
         }
 
-        async function recognizeWithRetry(base64, apiKey) {
-            let lastError = null;
-            for (const model of MODEL_CANDIDATES) {
-                try {
-                    return await callGeminiAPI(base64, apiKey, model);
-                } catch (e) {
-                    lastError = e;
-                }
-            }
-            throw new Error(`嘗試多個模型後失敗。最後錯誤: ${lastError.message}`);
-        }
+        async function callGeminiStable(base64, apiKey) {
+            // 使用 v1 穩定版與標準模型路徑
+            const url = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+            
+            const payload = {
+                contents: [{
+                    parts: [
+                        { text: "辨識圖中明日方舟抽卡紀錄。輸出為單一 JSON 對象，包含 poolName (字串) 和 operators (數組，含 name, star, time)。格式範例：{\"poolName\":\"池名\",\"operators\":[{\"name\":\"凱爾希\",\"star\":6,\"time\":\"2024-01-01 12:00:00\"}]}" },
+                        { inlineData: { mimeType: "image/png", data: base64.split(',')[1] } }
+                    ]
+                }]
+            };
 
-        async function callGeminiAPI(base64, apiKey, model) {
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
             const response = await fetch(url, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    contents: [{
-                        parts: [
-                            { text: "辨識圖中明日方舟抽卡紀錄。輸出為JSON格式: { \"poolName\": \"名稱\", \"operators\": [{\"name\":\"名\",\"star\":6,\"time\":\"YYYY-MM-DD HH:mm:ss\"}] }。只回傳JSON。" },
-                            { inlineData: { mimeType: "image/png", data: base64.split(',')[1] } }
-                        ]
-                    }],
-                    generationConfig: { responseMimeType: "application/json" }
-                })
+                body: JSON.stringify(payload)
             });
 
             const data = await response.json();
-            if (!response.ok) throw new Error(data.error?.message || "API Error");
-            const content = data.candidates?.[0]?.content?.parts?.[0]?.text;
-            return JSON.parse(content);
+            if (!response.ok) {
+                throw new Error(data.error?.message || `HTTP ${response.status}`);
+            }
+
+            const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (!rawText) throw new Error("API 無回傳內容");
+
+            // 手動過濾 Markdown 標籤以解析 JSON
+            const jsonStr = rawText.replace(/```json/g, "").replace(/```/g, "").trim();
+            return JSON.parse(jsonStr);
         }
 
         function processData(data) {
-            const poolName = data.poolName || "未知卡池";
-            if (!db.pools[poolName]) db.pools[poolName] = { puName: "", records: [] };
-            
+            const name = data.poolName || "未知卡池";
+            if (!db.pools[name]) db.pools[name] = { puName: "", records: [] };
             data.operators.forEach(op => {
-                const exists = db.pools[poolName].records.some(r => r.time === op.time && r.name === op.name);
-                if (!exists) db.pools[poolName].records.push(op);
+                const exists = db.pools[name].records.some(r => r.time === op.time && r.name === op.name);
+                if (!exists) db.pools[name].records.push(op);
             });
-            db.pools[poolName].records.sort((a, b) => new Date(a.time) - new Date(b.time));
+            db.pools[name].records.sort((a, b) => new Date(a.time) - new Date(b.time));
         }
 
         function saveAndRender() {
@@ -252,7 +247,6 @@
 
         function renderStats() {
             let totalPuPulls = 0, puCount = 0, total6Stars = 0, totalOffBanner = 0;
-
             Object.values(db.pools).forEach(pool => {
                 if (!pool.puName) return;
                 let pullCounter = 0;
@@ -264,13 +258,10 @@
                             totalPuPulls += pullCounter;
                             puCount++;
                             pullCounter = 0;
-                        } else {
-                            totalOffBanner++;
-                        }
+                        } else { totalOffBanner++; }
                     }
                 });
             });
-
             document.getElementById('avgPuPulls').innerText = puCount > 0 ? (totalPuPulls / puCount).toFixed(1) : "--";
             document.getElementById('offBannerRate').innerText = total6Stars > 0 ? ((totalOffBanner / total6Stars) * 100).toFixed(1) + "%" : "--%";
         }
@@ -278,44 +269,27 @@
         function renderPools() {
             const container = document.getElementById('poolContainer');
             container.innerHTML = '';
-            
-            const sortedKeys = Object.keys(db.pools).sort((a,b) => {
-                const timeA = db.pools[a].records.length ? new Date(db.pools[a].records[0].time) : 0;
-                const timeB = db.pools[b].records.length ? new Date(db.pools[b].records[0].time) : 0;
-                return timeB - timeA;
-            });
-
-            sortedKeys.forEach(name => {
+            Object.keys(db.pools).sort().reverse().forEach(name => {
                 const pool = db.pools[name];
                 const div = document.createElement('div');
                 div.className = 'ak-border-box overflow-hidden mb-6';
-                
-                let sixStarSummary = [];
-                let count = 0;
+                let pulls6 = [], c = 0;
                 pool.records.forEach(r => {
-                    count++;
-                    if(r.star === 6) {
-                        sixStarSummary.push({ name: r.name, pulls: count, isPu: r.name === pool.puName });
-                        count = 0;
-                    }
+                    c++;
+                    if(r.star === 6) { pulls6.push({ n: r.name, p: c, is: r.name === pool.puName }); c = 0; }
                 });
-
                 div.innerHTML = `
                     <div class="p-4 bg-zinc-800/80 flex justify-between items-center border-b border-zinc-700">
                         <div class="cursor-pointer group" onclick="openPuModal('${name.replace(/'/g, "\\'")}')">
                             <h2 class="text-lg font-bold text-white group-hover:text-cyan-400">${name}</h2>
-                            <span class="text-[10px] text-cyan-500 bg-cyan-950 px-2">COUNT: ${pool.records.length}</span>
+                            <span class="text-[10px] text-cyan-500 bg-cyan-950 px-2 font-mono">COUNT: ${pool.records.length}</span>
                         </div>
                         <button onclick="deletePool('${name.replace(/'/g, "\\'")}')" class="text-zinc-500 hover:text-red-500"><i class="fas fa-times"></i></button>
                     </div>
                     <div class="p-4">
                         <div class="mb-4 flex flex-wrap gap-2">
                             ${pool.puName ? `<span class="text-[10px] bg-white text-black px-2 font-bold">PU: ${pool.puName}</span>` : ''}
-                            ${sixStarSummary.map(s => `
-                                <span class="text-[10px] px-2 py-1 border border-zinc-700 ${s.isPu ? 'pu-star-6 font-bold' : 'text-zinc-400'}">
-                                    ${s.name} [${s.pulls}]
-                                </span>
-                            `).join('')}
+                            ${pulls6.map(s => `<span class="text-[10px] px-2 py-1 border border-zinc-700 ${s.is ? 'pu-star-6 font-bold' : 'text-zinc-400'}">${s.n} [${s.p}]</span>`).join('')}
                         </div>
                         <div class="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-8 lg:grid-cols-10 gap-2">
                             ${pool.records.map(r => `
@@ -332,31 +306,17 @@
         }
 
         let currentEditingPool = "";
-        function openPuModal(name) {
-            currentEditingPool = name;
-            document.getElementById('puInput').value = db.pools[name].puName;
-            document.getElementById('puModal').classList.remove('hidden');
-        }
+        function openPuModal(name) { currentEditingPool = name; document.getElementById('puInput').value = db.pools[name].puName; document.getElementById('puModal').classList.remove('hidden'); }
         function closeModal() { document.getElementById('puModal').classList.add('hidden'); }
-        function savePU() {
-            db.pools[currentEditingPool].puName = document.getElementById('puInput').value.trim();
-            closeModal();
-            saveAndRender();
-        }
-        function deletePool(name) { if(confirm("確定刪除此卡池？")) { delete db.pools[name]; saveAndRender(); } }
-        function clearAllData() { if(confirm("確定清空所有數據？")) { db = { pools: {} }; saveAndRender(); } }
-        function fileToBase64(file) {
-            return new Promise((r, j) => {
-                const reader = new FileReader();
-                reader.onload = () => r(reader.result);
-                reader.readAsDataURL(file);
-            });
-        }
+        function savePU() { db.pools[currentEditingPool].puName = document.getElementById('puInput').value.trim(); closeModal(); saveAndRender(); }
+        function deletePool(name) { if(confirm("確定刪除？")) { delete db.pools[name]; saveAndRender(); } }
+        function clearAllData() { if(confirm("確定清空？")) { db = { pools: {} }; saveAndRender(); } }
+        function fileToBase64(file) { return new Promise(r => { const reader = new FileReader(); reader.onload = () => r(reader.result); reader.readAsDataURL(file); }); }
         function exportData() {
             const blob = new Blob([JSON.stringify(db)], {type:'application/json'});
             const a = document.createElement('a');
             a.href = URL.createObjectURL(blob);
-            a.download = `arknights_prts_${Date.now()}.json`;
+            a.download = `arknights_data.json`;
             a.click();
         }
     </script>
