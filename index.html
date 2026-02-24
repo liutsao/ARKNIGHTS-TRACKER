@@ -147,7 +147,7 @@
     <div id="puModal" class="modal-overlay fixed inset-0 hidden z-50 flex items-center justify-center p-4">
         <div class="bg-zinc-900 p-6 w-full max-w-sm border border-cyan-900">
             <h3 class="text-lg font-bold mb-2 text-cyan-400 italic">SET UP RATE-UP UNIT</h3>
-            <p class="text-[10px] mb-4 opacity-50">請輸入該卡池的目標六星幹員名稱，系統將自動校對出貨消耗。</p>
+            <p class="text-[10px] mb-4 opacity-50">請輸入目標六星幹員，多位請用逗號(，)或空格區隔。</p>
             <input type="text" id="puInput" class="w-full mb-6 p-2 bg-black border border-zinc-700 focus:border-cyan-500 outline-none text-white">
             <div class="flex justify-end gap-3">
                 <button onclick="closeModal('puModal')" class="text-xs opacity-50 uppercase">Cancel</button>
@@ -371,6 +371,14 @@
             renderAll();
         }
 
+        // 檢查某個幹員是否在 PU 名單中
+        function isOperatorPU(opName, puString) {
+            if (!puString) return false;
+            // 將輸入的字串依照逗號、全形逗號或空格切開，並去除多餘空白
+            const puList = puString.split(/[,，\s]+/).filter(name => name.trim() !== "");
+            return puList.includes(opName);
+        }
+
         function renderAll() {
             renderStats();
             renderPools();
@@ -389,7 +397,7 @@
                     pullCounter++;
                     if (op.star === 6) {
                         total6Stars++;
-                        if (op.name === pool.puName) {
+                        if (isOperatorPU(op.name, pool.puName)) {
                             totalPuPulls += pullCounter;
                             puCount++;
                             pullCounter = 0;
@@ -427,7 +435,7 @@
                 pool.records.forEach(op => {
                     currentCount++;
                     if (op.star === 6) {
-                        pullSummaries.push({ name: op.name, pulls: currentCount, isPu: op.name === pool.puName });
+                        pullSummaries.push({ name: op.name, pulls: currentCount, isPu: isOperatorPU(op.name, pool.puName) });
                     }
                 });
 
@@ -454,7 +462,7 @@
                         <div class="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-8 lg:grid-cols-10 gap-2">
                             ${pool.records.map((op, idx) => `
                                 <div class="p-2 bg-zinc-900 border border-zinc-800 text-center cursor-pointer hover:border-cyan-500 transition-all 
-                                    ${op.name === pool.puName ? 'pu-star-6' : (op.star === 6 ? 'off-banner-6' : '')}" 
+                                    ${isOperatorPU(op.name, pool.puName) ? 'pu-star-6' : (op.star === 6 ? 'off-banner-6' : '')}" 
                                      onclick="editOperator('${poolName.replace(/'/g, "\\'")}', ${idx})">
                                     <div class="text-[10px] font-bold truncate">${op.name}</div>
                                     <div class="text-[9px] ${op.star === 6 ? 'star-6' : op.star === 5 ? 'star-5' : 'opacity-30'}">${'★'.repeat(op.star)}</div>
