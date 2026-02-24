@@ -102,7 +102,7 @@
         </div>
         <div class="flex gap-2 flex-wrap">
             <input type="password" id="apiKey" placeholder="輸入 Gemini API Key" class="text-sm bg-zinc-900 border border-zinc-700 px-3 py-2 outline-none focus:border-cyan-500 text-white">
-            <button onclick="openManualInputModal()" class="ak-btn manual text-xs"><i class="fas fa-keyboard"></i> 手動錄入</button>
+            <button onclick="open()" class="ak-btn manual text-xs"><i class="fas fa-keyboard"></i> 手動錄入</button>
             <button onclick="exportData()" class="ak-btn text-xs"><i class="fas fa-file-export"></i> 導出</button>
             <label class="ak-btn text-xs cursor-pointer">
                 <i class="fas fa-file-import"></i> 導入
@@ -193,9 +193,45 @@
                 <button onclick="saveManualEntry()" class="ak-btn primary text-xs" style="background: var(--ak-yellow);">Add Record</button>
             </div>
         </div>
+        <!-- 編輯幹員視窗 -->
+        <div id="editOpModal" class="modal-overlay fixed inset-0 hidden z-50 flex items-center justify-center p-4">
+            <div class="bg-zinc-900 p-6 w-full max-w-md border border-cyan-700">
+                <h3 class="text-lg font-bold mb-2 text-cyan-500 italic">EDIT OPERATOR DATA</h3>
+                <p class="text-[10px] mb-4 opacity-50">修正幹員資訊或從數據庫移除此記錄。</p>
+                
+                <div class="space-y-4">
+                    <div>
+                        <label class="text-[10px] text-zinc-500 uppercase">幹員名稱</label>
+                        <input type="text" id="editOpName" class="w-full p-2 bg-black border border-zinc-700 focus:border-cyan-500 outline-none text-white text-sm">
+                    </div>
+                    <div>
+                        <label class="text-[10px] text-zinc-500 uppercase">幹員星級</label>
+                        <select id="editOpStar" class="w-full p-2 bg-black border border-zinc-700 focus:border-cyan-500 outline-none text-white text-sm">
+                            <option value="6">6 ★</option>
+                            <option value="5">5 ★</option>
+                            <option value="4">4 ★</option>
+                            <option value="3">3 ★</option>
+                        </select>
+                     </div>
+                </div>
+        
+                <div class="flex justify-between mt-8">
+                    <!-- 刪除按鈕置左 -->
+                    <button onclick="deleteOperator()" class="text-xs text-red-500 hover:text-red-400 uppercase font-bold">
+                        <i class="fas fa-trash-alt mr-1"></i> Delete
+                    </button>
+                    <div class="flex gap-3">
+                        <button onclick="closeModal('editOpModal')" class="text-xs opacity-50 uppercase">Cancel</button>
+                        <button onclick="saveEditOperator()" class="ak-btn primary text-xs">Update</button>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script>
+        let currentEditPool = "";
+        let currentEditIdx = -1;
         let db = { pools: {} };
         const DB_KEY = 'arknights_tracker_v2';
         const API_KEY_KEY = 'arknights_gemini_key';
@@ -480,14 +516,37 @@
         }
 
         function editOperator(poolName, recordIndex) {
+            currentEditPool = poolName;
+            currentEditIdx = recordIndex;
             const op = db.pools[poolName].records[recordIndex];
-            const newName = window.prompt("請輸入幹員名稱：", op.name);
-            if (newName === null) return;
-            const newStar = window.prompt("請輸入星級 (3, 4, 5, 6)：", op.star);
-            if (newStar === null) return;
-            op.name = newName.trim() || op.name;
-            op.star = parseInt(newStar) || op.star;
+
+            // 填充資料到視窗輸入框
+            document.getElementById('editOpName').value = op.name;
+            document.getElementById('editOpStar').value = op.star;
+
+            // 顯示視窗
+            document.getElementById('editOpModal').classList.remove('hidden');
+        }
+
+        function saveEditOperator() {
+            const newName = document.getElementById('editOpName').value.trim();
+            const newStar = parseInt(document.getElementById('editOpStar').value);
+
+            if (!newName) return alert("名稱不能為空");
+
+            db.pools[currentEditPool].records[currentEditIdx].name = newName;
+            db.pools[currentEditPool].records[currentEditIdx].star = newStar;
+
+            closeModal('editOpModal');
             saveAndRender();
+        }
+
+        function deleteOperator() {
+            if (confirm("確定要刪除這筆抽取記錄嗎？此操作無法復原。")) {
+                db.pools[currentEditPool].records.splice(currentEditIdx, 1);
+                closeModal('editOpModal');
+                saveAndRender();
+            }
         }
 
         let currentEditingPool = "";
