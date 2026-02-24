@@ -444,7 +444,7 @@
                         <div class="cursor-pointer" onclick="openPuModal('${poolName.replace(/'/g, "\\'")}')">
                             <div class="flex items-center gap-2 flex-wrap">
                                 <h2 class="text-lg font-bold text-white tracking-tight">${poolName}</h2>
-                                ${pool.puName ? pool.puName.split(/[,，\s]+/).filter(n => n.trim()).map(name => `
+                                ${pool.puName ? pool.puName.split(/[,、\s]+/).filter(n => n.trim()).map(name => `
                                     <span class="text-[10px] bg-white text-black px-2 font-bold whitespace-nowrap">PU: ${name}</span>
                                 `).join('') : ''}
                             </div>
