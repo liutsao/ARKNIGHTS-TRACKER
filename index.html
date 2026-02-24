@@ -442,7 +442,12 @@
                 poolDiv.innerHTML = `
                     <div class="p-4 bg-zinc-800/80 flex justify-between items-center border-b border-zinc-700">
                         <div class="cursor-pointer" onclick="openPuModal('${poolName.replace(/'/g, "\\'")}')">
-                            <h2 class="text-lg font-bold text-white tracking-tight">${poolName}</h2>
+                            <div class="flex items-center gap-2 flex-wrap">
+                                <h2 class="text-lg font-bold text-white tracking-tight">${poolName}</h2>
+                                ${pool.puName ? pool.puName.split(/[,，\s]+/).filter(n => n.trim()).map(name => `
+                                    <span class="text-[10px] bg-white text-black px-2 font-bold whitespace-nowrap">PU: ${name}</span>
+                                `).join('') : ''}
+                            </div>
                             <span class="text-[10px] text-cyan-500 bg-cyan-950 px-2 py-0.5 font-mono">COUNT: ${pool.records.length}</span>
                         </div>
                         <button onclick="deletePool('${poolName.replace(/'/g, "\\'")}')" class="text-zinc-500 hover:text-red-500 p-2"><i class="fas fa-times"></i></button>
@@ -450,7 +455,6 @@
                     <div class="p-4">
                         ${pool.puName ? `
                             <div class="mb-4 flex flex-wrap gap-2">
-                                <span class="text-[10px] bg-white text-black px-2 font-bold flex items-center">PU: ${pool.puName}</span>
                                 ${pullSummaries.map(s => `
                                     <span class="text-[10px] px-2 py-1 border border-zinc-700 ${s.isPu ? 'pu-star-6 font-bold' : 'off-banner-6 text-zinc-400 bg-zinc-800/40'}">
                                         ${s.name} [${s.pulls}]
