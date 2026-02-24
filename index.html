@@ -230,9 +230,9 @@
     </div>
 
     <script>
+        let db = { pools: {} };
         let currentEditPool = "";
         let currentEditIdx = -1;
-        let db = { pools: {} };
         const DB_KEY = 'arknights_tracker_v2';
         const API_KEY_KEY = 'arknights_gemini_key';
 
@@ -417,7 +417,7 @@
 
         function renderAll() {
             renderStats();
-            renderPools();
+            ();
         }
 
         function renderStats() {
