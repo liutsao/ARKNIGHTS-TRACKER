@@ -114,12 +114,12 @@
 
     <section id="globalStats" class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
         <div class="ak-border-box p-4">
-            <h3 class="text-xs opacity-50 mb-1 uppercase tracking-widest">平均出六星抽數</h3>
-            <div id="avgPuPulls" class="text-4xl font-bold text-cyan-400">--抽</div>
+            <h3 class="text-xs opacity-50 mb-1 uppercase tracking-widest">平均出六星抽數 / / /</h3>
+            <div id="avgPuPulls" class="text-4xl font-bold text-cyan-400">--</div>
         </div>
         <div class="ak-border-box p-4 border-l-red-500">
-            <h3 class="text-xs opacity-50 mb-1 uppercase tracking-widest">非預期六星機率 (歪率)</h3>
-            <div id="offBannerRate" class="text-4xl font-bold text-red-400">--%</div>
+            <h3 class="text-xs opacity-50 mb-1 uppercase tracking-widest">非預期六星機率 / / /</h3>
+            <div id="offBannerRate" class="text-4xl font-bold text-red-400">--</div>
         </div>
     </section>
 
@@ -449,8 +449,8 @@
             const avgPullsEl = document.getElementById('avgPuPulls');
             const offRateEl = document.getElementById('offBannerRate');
 
-            avgPullsEl.innerText = puCount > 0 ? (totalPuPulls / puCount).toFixed(1) : "--";
-            offRateEl.innerText = total6Stars > 0 ? ((totalOffBanner / total6Stars) * 100).toFixed(1) + "%" : "--%";
+            avgPullsEl.innerHTML = puCount > 0 ? `${(totalPuPulls / puCount).toFixed(1)}<span class="text-lg ml-1">抽</span>` : "--";
+            offRateEl.innerHTML = total6Stars > 0 ? `${((totalOffBanner / total6Stars) * 100).toFixed(1)}<span class="text-lg ml-1">%</span>` : "--<span class=\"text-lg ml-1\">%</span>";
         }
 
         function renderPools() {
